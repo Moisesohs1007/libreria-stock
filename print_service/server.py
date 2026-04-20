@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime
 
@@ -49,7 +48,7 @@ def _parse_limit_offset():
 def create_app():
   app = Flask(__name__)
   CORS(app)
-  socketio = SocketIO(app, cors_allowed_origins="*")
+  socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
   db_path = os.environ.get("PRINT_DB_PATH") or dbmod.default_db_path()
   conn = dbmod.connect(db_path)
