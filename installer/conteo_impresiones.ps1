@@ -148,7 +148,8 @@ function Ensure-PythonRuntime {
   $getPip = Join-Path $Root "get-pip.py"
   Download-File -Url "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip
   Write-Log "Instalando pip..." "INFO"
-  & $py $getPip
+  $pipOut = & $py $getPip 2>&1
+  foreach ($l in $pipOut) { Write-Log $l "INFO" }
 
   return $py
 }
@@ -180,7 +181,8 @@ function Install-Dependencies {
   $req = Join-Path (Join-Path (Join-Path $Root "app") "print_service") "requirements.txt"
   if (-not (Test-Path $req)) { throw "No se encontró requirements.txt" }
   Write-Log "Instalando dependencias Python..." "INFO"
-  & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location -r $req
+  $pipOut = & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location -r $req 2>&1
+  foreach ($l in $pipOut) { Write-Log $l "INFO" }
 }
 
 function Write-RunScript {
