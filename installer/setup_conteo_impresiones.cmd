@@ -18,5 +18,14 @@ if not exist "%PS1%" (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode install
-exit /b %errorlevel%
+set "EC=%errorlevel%"
+if not "%EC%"=="0" (
+  echo.
+  echo [ERROR] El instalador termino con codigo %EC%.
+  echo Revisa logs en: C:\LibreriaPrintMonitor\logs\installer.log
+  echo y:            C:\LibreriaPrintMonitor\logs\service.log
+  echo.
+  pause
+)
+exit /b %EC%
 
