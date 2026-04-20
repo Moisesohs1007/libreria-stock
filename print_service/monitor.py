@@ -216,6 +216,7 @@ class PrintMonitor:
       owner = (getattr(wmi_job, "Owner", None) or "").strip() or "Desconocido"
       user_id = f"{owner}@{self._machine}" if self._machine else owner
       created_ts = now_tz_iso()
+      queue_base = read_queue_total_pages(wmi_conn, printer_name)
 
       row = {
         "printer_name": printer_name,
@@ -235,28 +236,29 @@ class PrintMonitor:
       from .db import insert_print_job, insert_event
       print_job_id = insert_print_job(self.db_conn, row)
       insert_event(self.db_conn, print_job_id, created_ts, "JOB_CREATED", None)
-      t = threading.Thread(target=self._monitor_job_until_final, args=(wmi_conn, printer_name, spool_job_id, print_job_id), daemon=True)
+      t = threading.Thread(target=self._monitor_job_until_final, args=(wmi_conn, printer_name, spool_job_id, print_job_id, queue_base), daemon=True)
       t.start()
       self._threads.append(t)
     except Exception:
       return
 
-  def _monitor_job_until_final(self, wmi_conn, printer_name, spool_job_id, print_job_id):
+  def _monitor_job_until_final(self, wmi_conn, printer_name, spool_job_id, print_job_id, queue_base):
     printer_handle = None
     last_pages = 0
     last_flags = None
     last_type = "Desconocido"
     last_error = None
-    queue_base = None
     try:
-      queue_base = read_queue_total_pages(wmi_conn, printer_name)
       printer_handle = win32print.OpenPrinter(printer_name)
       try:
         pinfo = win32print.GetPrinter(printer_handle, 2)
       except Exception:
         pinfo = None
+      started = time.time()
 
       while not self._stop.is_set():
+        if time.time() - started > 300:
+          break
         job_info = None
         try:
           if spool_job_id is not None:
@@ -277,11 +279,6 @@ class PrintMonitor:
           last_error = derive_error_code(flags, None)
           if last_error:
             break
-          try:
-            if flags is not None and (flags & win32print.JOB_STATUS_PRINTED):
-              break
-          except Exception:
-            pass
           time.sleep(self.poll_interval_s)
           continue
 
@@ -290,10 +287,17 @@ class PrintMonitor:
         ok = is_success(last_flags, printer_state, last_error)
         completed_ts = now_tz_iso()
         from .db import update_print_job, insert_event
-        queue_now = read_queue_total_pages(wmi_conn, printer_name)
         queue_delta = 0
-        if queue_base is not None and queue_now is not None:
-          queue_delta = queue_now - queue_base
+        if queue_base is not None:
+          best = 0
+          for _ in range(8):
+            queue_now = read_queue_total_pages(wmi_conn, printer_name)
+            if queue_now is not None:
+              d = queue_now - queue_base
+              if d > best:
+                best = d
+            time.sleep(0.5)
+          queue_delta = best
         final_pages = choose_pages(last_pages, last_pages, 1, queue_delta, ok)
         patch = {
           "pages": int(final_pages),
