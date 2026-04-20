@@ -1323,6 +1323,7 @@ setInterval(() => {
 }, 1000);
 
 // Escáner de fondo
+let _bgFailCount = 0;
 setInterval(async () => {
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") return;
@@ -1332,9 +1333,16 @@ setInterval(async () => {
     const r = await fetch("http://localhost:7777/poll");
     const d = await r.json();
     if(d.codigo) procesarCodigo(d.codigo);
+    _bgFailCount = 0;
   } catch(e) {
+    _bgFailCount += 1;
     setBgBadge(false);
     setScannerDot(false);
+    if (_bgFailCount >= 6) {
+      localStorage.setItem("bg_scanner_enabled", "0");
+      _bgFailCount = 0;
+      mostrarMensaje("⚠️ Escáner de fondo no disponible. Se activó modo normal.", "warning");
+    }
   }
 }, 500);
 
