@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("install","update","uninstall","start","stop")][string]$Mode = "install",
+  [ValidateSet("install","update","uninstall","start","stop","doctor")][string]$Mode = "install",
   [switch]$Silent,
   [switch]$KeepData,
   [switch]$NoElevate,
@@ -274,6 +274,140 @@ function Uninstall-All {
   }
 }
 
+function Test-PortListening {
+  param([int]$Port)
+  try {
+    $lines = & netstat -ano 2>$null
+    if (-not $lines) { return $false }
+    $pattern = "[:\.]$Port\s+.*LISTENING"
+    return ($lines | Select-String -Pattern $pattern -SimpleMatch:$false | Select-Object -First 1) -ne $null
+  } catch {
+    return $false
+  }
+}
+
+function Get-ServiceLogTail {
+  param([string]$Root, [int]$Tail = 120)
+  $log = Join-Path (Join-Path $Root "logs") "service.log"
+  if (-not (Test-Path $log)) { return @() }
+  try { return Get-Content -Path $log -Tail $Tail -ErrorAction Stop } catch { return @() }
+}
+
+function Repair-RunScriptIfNeeded {
+  param([string]$Root, [int]$Port, [string]$Token)
+  $scriptPath = Join-Path $Root "run_service.cmd"
+  if (-not (Test-Path $scriptPath)) {
+    Write-Log "run_service.cmd no existe; regenerando." "WARN"
+    Write-RunScript -Root $Root -Port $Port -Token $Token
+    return $true
+  }
+  $txt = ""
+  try { $txt = (Get-Content -Path $scriptPath -Raw -ErrorAction Stop) } catch { $txt = "" }
+  $needsRepair = $false
+  if (-not $txt) { $needsRepair = $true }
+  if ($txt -match "print_svc\.server") { $needsRepair = $true }
+  if ($txt -match "^-m\s+print_service\.server" -or $txt -match "`n-m\s+print_service\.server") { $needsRepair = $true }
+  if ($txt -notmatch "PYEXE=") { $needsRepair = $true }
+  if ($txt -notmatch "sys\.path\.insert") { $needsRepair = $true }
+  if ($needsRepair) {
+    Write-Log "run_service.cmd desactualizado/mal formado; regenerando." "WARN"
+    Write-RunScript -Root $Root -Port $Port -Token $Token
+    return $true
+  }
+  return $false
+}
+
+function Start-And-WaitPort {
+  param([int]$Port, [int]$Seconds = 12)
+  Start-Task
+  for ($i = 0; $i -lt $Seconds; $i++) {
+    Start-Sleep -Seconds 1
+    if (Test-PortListening -Port $Port) { return $true }
+  }
+  return $false
+}
+
+function Invoke-Doctor {
+  param([string]$Root, [int]$Port, [string]$Token)
+  Write-Log "Doctor: iniciando diagnóstico exhaustivo." "INFO"
+  Ensure-Dirs -Root $Root
+
+  $reportPath = Join-Path (Join-Path $Root "logs") "doctor_report.txt"
+  $report = New-Object System.Collections.Generic.List[string]
+  $report.Add("=== Doctor LibreriaPrintMonitor ===")
+  $report.Add("Fecha: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))")
+  $report.Add("Root: $Root")
+  $report.Add("Puerto: $Port")
+
+  $py = Join-Path (Join-Path $Root "runtime") "python.exe"
+  if (-not (Test-Path $py)) {
+    $report.Add("RUNTIME: MISSING -> descargando runtime Python")
+    $null = Ensure-PythonRuntime -Root $Root
+  } else {
+    $report.Add("RUNTIME: OK")
+  }
+
+  $srv = Join-Path (Join-Path (Join-Path $Root "app") "print_service") "server.py"
+  if (-not (Test-Path $srv)) {
+    $report.Add("APP: MISSING -> descargando print_service")
+    Ensure-AppFiles -Root $Root
+  } else {
+    $report.Add("APP: OK")
+  }
+
+  $pythonExe = Ensure-PythonRuntime -Root $Root
+  Install-Dependencies -PythonExe $pythonExe -Root $Root
+
+  $report.Add("RUN_SCRIPT: Verificando")
+  Write-RunScript -Root $Root -Port $Port -Token $Token
+  $null = Repair-RunScriptIfNeeded -Root $Root -Port $Port -Token $Token
+
+  $importCmd = "import sys; sys.path.insert(0, r'$Root\app'); import print_service.server as s; print('OK_IMPORT')"
+  $importOut = & $pythonExe -c $importCmd 2>&1
+  foreach ($l in $importOut) { Write-Log "$l" "INFO" }
+  if ($LASTEXITCODE -ne 0) {
+    $report.Add("IMPORT_TEST: FAIL")
+    Set-Content -Path $reportPath -Value $report -Encoding UTF8
+    throw "Doctor: fallo en import de print_service.server"
+  }
+  $report.Add("IMPORT_TEST: OK")
+
+  Install-Task -Root $Root
+  Stop-Task
+  $ok = Start-And-WaitPort -Port $Port -Seconds 12
+
+  if (-not $ok) {
+    $tail = Get-ServiceLogTail -Root $Root -Tail 160
+    foreach ($l in $tail) { $report.Add("LOG: $l") }
+
+    $joined = ($tail -join "`n")
+    if ($joined -match "No module named 'print_service'" -or $joined -match "'-m' no se reconoce") {
+      $report.Add("AUTO_FIX: Regenerar run_service.cmd + reinstalar tarea + reintentar")
+      Write-RunScript -Root $Root -Port $Port -Token $Token
+      Install-Task -Root $Root
+      Stop-Task
+      $ok = Start-And-WaitPort -Port $Port -Seconds 12
+    }
+  }
+
+  if ($ok) {
+    $report.Add("PORT_TEST: OK (LISTENING en $Port)")
+    try {
+      $res = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/prints/health" -UseBasicParsing -TimeoutSec 5
+      $report.Add("HEALTH_TEST: OK (HTTP $($res.StatusCode))")
+    } catch {
+      $report.Add("HEALTH_TEST: WARN ($($_.Exception.Message))")
+    }
+    Set-Content -Path $reportPath -Value $report -Encoding UTF8
+    Write-Log "Doctor: OK. Reporte: $reportPath" "INFO"
+    return
+  }
+
+  $report.Add("PORT_TEST: FAIL (no escucha en $Port)")
+  Set-Content -Path $reportPath -Value $report -Encoding UTF8
+  throw "Doctor: servicio no inicia. Revisa $reportPath y logs\service.log"
+}
+
 $script:Mode = $Mode
 $script:Silent = [bool]$Silent
 $script:KeepData = [bool]$KeepData
@@ -291,6 +425,17 @@ Ensure-Admin
 if ($Mode -eq "stop") { Stop-Task; Write-Log "OK stop" "INFO"; exit 0 }
 if ($Mode -eq "start") { Start-Task; Write-Log "OK start" "INFO"; exit 0 }
 if ($Mode -eq "uninstall") { Uninstall-All -Root $root; Write-Log "OK uninstall" "INFO"; exit 0 }
+if ($Mode -eq "doctor") {
+  try {
+    Invoke-Doctor -Root $root -Port $Port -Token $Token
+    if (-not $Silent) { Write-Host ""; Read-Host "Enter para cerrar" | Out-Null }
+    exit 0
+  } catch {
+    Write-Log "Doctor falló: $($_.Exception.Message)" "ERROR"
+    if (-not $Silent) { Write-Host ""; Read-Host "Enter para cerrar" | Out-Null }
+    exit 1
+  }
+}
 
 $rp = Try-CreateRestorePoint -Description "LibreriaPrintMonitor $Mode"
 $bk = Backup-Current -Root $root
