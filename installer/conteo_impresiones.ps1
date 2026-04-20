@@ -154,7 +154,10 @@ function Ensure-PythonRuntime {
     $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
     $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
     $pipOut = & $py $getPip --no-warn-script-location 2>&1
-    foreach ($l in $pipOut) { Write-Log $l "INFO" }
+    foreach ($l in $pipOut) {
+      $msg = "$l".Trim()
+      if (-not [string]::IsNullOrWhiteSpace($msg)) { Write-Log $msg "INFO" }
+    }
     if ($LASTEXITCODE -ne 0) {
       throw "get-pip.py falló con código $LASTEXITCODE"
     }
@@ -198,7 +201,10 @@ function Install-Dependencies {
     $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
     $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
     $pipOut = & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location -r $req 2>&1
-    foreach ($l in $pipOut) { Write-Log $l "INFO" }
+    foreach ($l in $pipOut) {
+      $msg = "$l".Trim()
+      if (-not [string]::IsNullOrWhiteSpace($msg)) { Write-Log $msg "INFO" }
+    }
     if ($LASTEXITCODE -ne 0) {
       throw "Instalación de dependencias falló con código $LASTEXITCODE"
     }
