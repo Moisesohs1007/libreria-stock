@@ -1325,8 +1325,6 @@ function impSetConn(ok, text) {
   const st = document.getElementById("imp-estado");
   if (dot) dot.style.background = ok ? "#16a34a" : "#ef4444";
   if (st) st.textContent = text || (ok ? "conectado" : "sin conexión");
-  const vSvc = document.getElementById("v-imp-svc");
-  if (vSvc) vSvc.textContent = impCfg.url || "—";
 }
 
 function impRenderTotals(totals) {
@@ -1427,37 +1425,39 @@ async function impUpdateVendorWidget() {
   const candidate = (usuario || nombre || "").trim();
   if (!candidate) return;
   try {
-    let effectiveUser = candidate;
-    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUser });
-    let t = r.totals || {};
-    const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
-    if (isAllZero) {
-      try {
-        const meta = await impFetchJson("/api/prints/meta");
-        const users = meta?.users || [];
-        const userStrings = users.filter(u => typeof u === "string").map(u => u.trim()).filter(Boolean);
-        if (userStrings.length) {
-          const candLower = candidate.toLowerCase();
-          let bestOwner = "";
+    let effectiveUserFull = "";
+    let effectiveUserBase = candidate;
+    try {
+      const meta = await impFetchJson("/api/prints/meta");
+      const users = meta?.users || [];
+      const userStrings = users.filter(u => typeof u === "string").map(u => u.trim()).filter(Boolean);
+      if (userStrings.length) {
+        const candLower = candidate.toLowerCase();
+        for (const u of userStrings) {
+          const owner = u.split("@")[0].trim();
+          if (!owner) continue;
+          if (owner.toLowerCase() === candLower) { effectiveUserFull = u; break; }
+        }
+        if (!effectiveUserFull) {
           for (const u of userStrings) {
             const owner = u.split("@")[0].trim();
             if (!owner) continue;
-            if (owner.toLowerCase() === candLower) { bestOwner = owner; break; }
-          }
-          if (!bestOwner) {
-            for (const u of userStrings) {
-              const owner = u.split("@")[0].trim();
-              if (!owner) continue;
-              if (owner.toLowerCase().includes(candLower) || candLower.includes(owner.toLowerCase())) { bestOwner = owner; break; }
-            }
-          }
-          if (!bestOwner) bestOwner = userStrings[0].split("@")[0].trim();
-          if (bestOwner && bestOwner !== candidate) {
-            effectiveUser = bestOwner;
-            r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUser });
-            t = r.totals || t;
+            if (owner.toLowerCase().includes(candLower) || candLower.includes(owner.toLowerCase())) { effectiveUserFull = u; break; }
           }
         }
+        if (!effectiveUserFull) effectiveUserFull = userStrings[0];
+      }
+    } catch {}
+
+    if (effectiveUserFull) effectiveUserBase = effectiveUserFull.split("@")[0].trim() || candidate;
+
+    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUserBase });
+    let t = r.totals || {};
+    const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
+    if (isAllZero && effectiveUserBase !== candidate) {
+      try {
+        r = await impFetchJson("/api/prints/my-summary", { user_id: candidate });
+        t = r.totals || t;
       } catch {}
     }
     const vTot = document.getElementById("v-imp-total");
@@ -1468,13 +1468,29 @@ async function impUpdateVendorWidget() {
     if (vCol) vCol.textContent = (t.pages_color ?? 0).toLocaleString();
 
     try {
-      const list = await impFetchJson("/api/prints", { users: effectiveUser, status: "completed", limit: 1, offset: 0 });
-      const row = (list?.rows && list.rows.length) ? list.rows[0] : null;
-      const p = document.getElementById("v-imp-printer");
-      if (p) p.textContent = row?.printer_name || "—";
+      const tbody = document.getElementById("v-imp-by-printer");
+      if (!tbody) return;
+      if (!effectiveUserFull) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+        return;
+      }
+      const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed" });
+      const rows = sum?.by_printer || [];
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.printer_name || ""}</td>
+          <td class="mono">${(r.pages_total || 0).toLocaleString()}</td>
+          <td class="mono">${(r.pages_bn || 0).toLocaleString()}</td>
+          <td class="mono">${(r.pages_color || 0).toLocaleString()}</td>
+        </tr>
+      `).join("");
     } catch {
-      const p = document.getElementById("v-imp-printer");
-      if (p) p.textContent = "—";
+      const tbody = document.getElementById("v-imp-by-printer");
+      if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
     }
   } catch {}
 }
