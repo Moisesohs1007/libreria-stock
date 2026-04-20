@@ -49,6 +49,15 @@ def read_copies(job_info, printer_info=None):
     dev = job_info.get("pDevMode") if job_info else None
   except Exception:
     dev = None
+  if job_info and dev is None:
+    try:
+      c2 = job_info.get("Copies", None)
+      if c2 is not None:
+        c2 = int(c2)
+        if c2 > 0:
+          return c2
+    except Exception:
+      pass
   if dev is None and printer_info is not None:
     try:
       dev = printer_info.get("pDevMode")
@@ -221,6 +230,8 @@ class PrintMonitor:
       row = {
         "printer_name": printer_name,
         "pages": 0,
+        "pages_estimated": 0,
+        "copies_requested": 1,
         "print_type": "Desconocido",
         "ts_created": created_ts,
         "ts_completed": None,
@@ -245,6 +256,8 @@ class PrintMonitor:
   def _monitor_job_until_final(self, wmi_conn, printer_name, spool_job_id, print_job_id, queue_base):
     printer_handle = None
     last_pages = 0
+    last_pages_per_copy = 0
+    last_copies = 1
     last_flags = None
     last_type = "Desconocido"
     last_error = None
@@ -272,6 +285,11 @@ class PrintMonitor:
           total_pages = safe_int(job_info.get("TotalPages", None), default=0)
           pages_printed = safe_int(job_info.get("PagesPrinted", None), default=0)
           copies = read_copies(job_info, pinfo)
+          if copies > last_copies:
+            last_copies = copies
+          per_copy = max(total_pages, pages_printed, 0)
+          if per_copy > last_pages_per_copy:
+            last_pages_per_copy = per_copy
           pages = choose_pages(total_pages, pages_printed, copies, 0, ok=True)
           if pages > 0:
             last_pages = pages
@@ -299,8 +317,16 @@ class PrintMonitor:
             time.sleep(0.5)
           queue_delta = best
         final_pages = choose_pages(last_pages, last_pages, 1, queue_delta, ok)
+        pages_per_copy = last_pages_per_copy or (1 if ok else 0)
+        pages_estimated = 0
+        if ok:
+          pages_estimated = max(0, int(pages_per_copy)) * max(1, int(last_copies))
+          if pages_estimated <= 0:
+            pages_estimated = int(final_pages) if int(final_pages) > 0 else 1
         patch = {
           "pages": int(final_pages),
+          "pages_estimated": int(pages_estimated),
+          "copies_requested": int(last_copies) if ok else int(last_copies),
           "print_type": last_type,
           "ts_completed": completed_ts,
           "status": "completed" if ok else "failed",

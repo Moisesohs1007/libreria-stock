@@ -24,7 +24,9 @@ def export_excel(rows, totals, title="Conteo de impresiones"):
     "Usuario",
     "Documento",
     "Tipo",
-    "Páginas",
+    "Confirmadas",
+    "Estimadas (copias)",
+    "Copias",
     "Estado",
     "Error",
   ]
@@ -46,18 +48,21 @@ def export_excel(rows, totals, title="Conteo de impresiones"):
     ws.cell(i, 6, r.get("document"))
     ws.cell(i, 7, r.get("print_type"))
     ws.cell(i, 8, r.get("pages"))
-    ws.cell(i, 9, r.get("status"))
-    ws.cell(i, 10, r.get("error_code"))
+    ws.cell(i, 9, r.get("pages_estimated"))
+    ws.cell(i, 10, r.get("copies_requested"))
+    ws.cell(i, 11, r.get("status"))
+    ws.cell(i, 12, r.get("error_code"))
 
-  widths = [8, 22, 22, 28, 20, 42, 10, 10, 12, 18]
+  widths = [8, 22, 22, 28, 20, 42, 10, 12, 14, 10, 12, 18]
   for i, w in enumerate(widths, 1):
     ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
   last_row = len(rows) + 1
   ws.append([])
-  ws.append(["", "", "", "", "", "TOTAL PÁGINAS", "", f"=SUM(H2:H{last_row})"])
-  ws.append(["", "", "", "", "", "TOTAL BN", "", totals.get("pages_bn", 0)])
-  ws.append(["", "", "", "", "", "TOTAL COLOR", "", totals.get("pages_color", 0)])
+  ws.append(["", "", "", "", "", "TOTAL CONFIRMADAS", "", f"=SUM(H2:H{last_row})"])
+  ws.append(["", "", "", "", "", "TOTAL ESTIMADAS", "", f"=SUM(I2:I{last_row})"])
+  ws.append(["", "", "", "", "", "TOTAL BN (CONF)", "", totals.get("pages_bn", 0)])
+  ws.append(["", "", "", "", "", "TOTAL COLOR (CONF)", "", totals.get("pages_color", 0)])
   ws.append(["", "", "", "", "", "TRABAJOS OK", "", totals.get("completed_jobs", 0)])
   ws.append(["", "", "", "", "", "TRABAJOS FALLIDOS", "", totals.get("failed_jobs", 0)])
 
@@ -104,8 +109,8 @@ def export_pdf(rows, totals, company_name="Librería Virgen de la Puerta", logo_
   story.append(Spacer(1, 0.4 * cm))
 
   summary_data = [
-    ["Total páginas", totals.get("pages_total", 0), "BN", totals.get("pages_bn", 0), "Color", totals.get("pages_color", 0)],
-    ["Trabajos OK", totals.get("completed_jobs", 0), "Fallidos", totals.get("failed_jobs", 0), "", ""],
+    ["Confirmadas", totals.get("pages_total", 0), "Estimadas", totals.get("pages_total_estimated", 0), "OK", totals.get("completed_jobs", 0)],
+    ["BN (conf)", totals.get("pages_bn", 0), "Color (conf)", totals.get("pages_color", 0), "Fallidos", totals.get("failed_jobs", 0)],
   ]
   tsum = Table(summary_data, colWidths=[3.0 * cm, 2.5 * cm, 2.0 * cm, 2.5 * cm, 2.0 * cm, 2.5 * cm])
   tsum.setStyle(
@@ -121,7 +126,7 @@ def export_pdf(rows, totals, company_name="Librería Virgen de la Puerta", logo_
   story.append(tsum)
   story.append(Spacer(1, 0.5 * cm))
 
-  headers = ["ID", "Creado", "Completado", "Impresora", "Usuario", "Tipo", "Páginas", "Estado"]
+  headers = ["ID", "Creado", "Completado", "Impresora", "Usuario", "Tipo", "Conf", "Est", "Copias"]
   data = [headers]
   for r in rows[:500]:
     data.append(
@@ -133,10 +138,11 @@ def export_pdf(rows, totals, company_name="Librería Virgen de la Puerta", logo_
         (r.get("user_id") or "")[:18],
         r.get("print_type") or "",
         str(r.get("pages") or 0),
-        r.get("status") or "",
+        str(r.get("pages_estimated") or 0),
+        str(r.get("copies_requested") or 1),
       ]
     )
-  table = Table(data, repeatRows=1, colWidths=[1.2 * cm, 2.8 * cm, 2.8 * cm, 3.5 * cm, 3.0 * cm, 1.6 * cm, 1.6 * cm, 2.0 * cm])
+  table = Table(data, repeatRows=1, colWidths=[1.2 * cm, 2.6 * cm, 2.6 * cm, 3.0 * cm, 3.0 * cm, 1.4 * cm, 1.4 * cm, 1.4 * cm, 1.4 * cm])
   table.setStyle(
     TableStyle(
       [

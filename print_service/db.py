@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS print_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   printer_name TEXT NOT NULL,
   pages INTEGER NOT NULL,
+  pages_estimated INTEGER NOT NULL DEFAULT 0,
+  copies_requested INTEGER NOT NULL DEFAULT 1,
   print_type TEXT NOT NULL,
   ts_created TEXT NOT NULL,
   ts_completed TEXT,
@@ -62,6 +64,18 @@ def _validate_row(row):
     raise ValueError("pages inválido")
   if pages < 0:
     raise ValueError("pages no puede ser negativo")
+  try:
+    pages_est = int(row.get("pages_estimated", 0))
+  except Exception:
+    raise ValueError("pages_estimated inválido")
+  if pages_est < 0:
+    raise ValueError("pages_estimated no puede ser negativo")
+  try:
+    copies = int(row.get("copies_requested", 1))
+  except Exception:
+    raise ValueError("copies_requested inválido")
+  if copies < 1:
+    raise ValueError("copies_requested debe ser >= 1")
   ptype = row.get("print_type")
   if ptype not in ALLOWED_PRINT_TYPES:
     raise ValueError("print_type inválido")
@@ -92,6 +106,12 @@ def connect(db_path):
 
 def init_db(conn):
   conn.executescript(SCHEMA)
+  cur = conn.execute("PRAGMA table_info(print_jobs)")
+  cols = {r[1] for r in cur.fetchall()}
+  if "pages_estimated" not in cols:
+    conn.execute("ALTER TABLE print_jobs ADD COLUMN pages_estimated INTEGER NOT NULL DEFAULT 0")
+  if "copies_requested" not in cols:
+    conn.execute("ALTER TABLE print_jobs ADD COLUMN copies_requested INTEGER NOT NULL DEFAULT 1")
   conn.commit()
 
 
@@ -111,14 +131,16 @@ def insert_print_job(conn, row):
     cur.execute(
       """
       INSERT INTO print_jobs (
-        printer_name, pages, print_type, ts_created, ts_completed,
+        printer_name, pages, pages_estimated, copies_requested, print_type, ts_created, ts_completed,
         document, user_id, windows_owner, windows_machine, spool_job_id,
         status, error_code, raw_status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       """,
       (
         row["printer_name"],
         row["pages"],
+        row.get("pages_estimated", 0),
+        row.get("copies_requested", 1),
         row["print_type"],
         row["ts_created"],
         row.get("ts_completed"),
@@ -143,6 +165,20 @@ def update_print_job(conn, print_job_id, patch):
       raise ValueError("pages inválido")
     if patch["pages"] < 0:
       raise ValueError("pages no puede ser negativo")
+  if "pages_estimated" in patch:
+    try:
+      patch["pages_estimated"] = int(patch["pages_estimated"])
+    except Exception:
+      raise ValueError("pages_estimated inválido")
+    if patch["pages_estimated"] < 0:
+      raise ValueError("pages_estimated no puede ser negativo")
+  if "copies_requested" in patch:
+    try:
+      patch["copies_requested"] = int(patch["copies_requested"])
+    except Exception:
+      raise ValueError("copies_requested inválido")
+    if patch["copies_requested"] < 1:
+      raise ValueError("copies_requested debe ser >= 1")
   if "print_type" in patch and patch["print_type"] not in ALLOWED_PRINT_TYPES:
     raise ValueError("print_type inválido")
   if "status" in patch and patch["status"] not in ALLOWED_STATUSES:
@@ -183,6 +219,9 @@ def query_totals(conn, where_sql, params):
       COALESCE(SUM(CASE WHEN status='completed' THEN pages ELSE 0 END), 0) AS pages_total,
       COALESCE(SUM(CASE WHEN status='completed' AND print_type='BN' THEN pages ELSE 0 END), 0) AS pages_bn,
       COALESCE(SUM(CASE WHEN status='completed' AND print_type='Color' THEN pages ELSE 0 END), 0) AS pages_color,
+      COALESCE(SUM(CASE WHEN status='completed' THEN pages_estimated ELSE 0 END), 0) AS pages_total_estimated,
+      COALESCE(SUM(CASE WHEN status='completed' AND print_type='BN' THEN pages_estimated ELSE 0 END), 0) AS pages_bn_estimated,
+      COALESCE(SUM(CASE WHEN status='completed' AND print_type='Color' THEN pages_estimated ELSE 0 END), 0) AS pages_color_estimated,
       COALESCE(SUM(CASE WHEN status LIKE 'failed%%' THEN 1 ELSE 0 END), 0) AS failed_jobs,
       COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS completed_jobs
     FROM print_jobs
@@ -201,6 +240,9 @@ def query_by_printer(conn, where_sql, params):
       COALESCE(SUM(CASE WHEN status='completed' THEN pages ELSE 0 END), 0) AS pages_total,
       COALESCE(SUM(CASE WHEN status='completed' AND print_type='BN' THEN pages ELSE 0 END), 0) AS pages_bn,
       COALESCE(SUM(CASE WHEN status='completed' AND print_type='Color' THEN pages ELSE 0 END), 0) AS pages_color,
+      COALESCE(SUM(CASE WHEN status='completed' THEN pages_estimated ELSE 0 END), 0) AS pages_total_estimated,
+      COALESCE(SUM(CASE WHEN status='completed' AND print_type='BN' THEN pages_estimated ELSE 0 END), 0) AS pages_bn_estimated,
+      COALESCE(SUM(CASE WHEN status='completed' AND print_type='Color' THEN pages_estimated ELSE 0 END), 0) AS pages_color_estimated,
       COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS jobs_completed,
       COALESCE(SUM(CASE WHEN status LIKE 'failed%%' THEN 1 ELSE 0 END), 0) AS jobs_failed
     FROM print_jobs

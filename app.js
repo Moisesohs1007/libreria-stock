@@ -1332,10 +1332,14 @@ function impRenderTotals(totals) {
   const ok = document.getElementById("imp-ok");
   const bn = document.getElementById("imp-bn");
   const color = document.getElementById("imp-color");
-  if (total) total.textContent = (totals?.pages_total ?? 0).toLocaleString();
+  if (total) total.textContent = (totals?.pages_total_estimated ?? totals?.pages_total ?? 0).toLocaleString();
   if (ok) ok.textContent = (totals?.completed_jobs ?? 0).toLocaleString();
-  if (bn) bn.textContent = (totals?.pages_bn ?? 0).toLocaleString();
-  if (color) color.textContent = (totals?.pages_color ?? 0).toLocaleString();
+  if (bn) bn.textContent = (totals?.pages_bn_estimated ?? totals?.pages_bn ?? 0).toLocaleString();
+  if (color) color.textContent = (totals?.pages_color_estimated ?? totals?.pages_color ?? 0).toLocaleString();
+  const conf = document.getElementById("imp-total-conf");
+  const est = document.getElementById("imp-total-est");
+  if (conf) conf.textContent = (totals?.pages_total ?? 0).toLocaleString();
+  if (est) est.textContent = (totals?.pages_total_estimated ?? 0).toLocaleString();
   const ult = document.getElementById("imp-ultima");
   if (ult) ult.textContent = new Date().toLocaleTimeString();
 }
@@ -1344,15 +1348,16 @@ function impRenderByPrinter(rows) {
   const tbody = document.getElementById("imp-by-printer");
   if (!tbody) return;
   if (!rows || !rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map(r => `
     <tr>
       <td>${r.printer_name || ""}</td>
       <td class="mono">${(r.pages_total || 0).toLocaleString()}</td>
-      <td class="mono">${(r.pages_bn || 0).toLocaleString()}</td>
-      <td class="mono">${(r.pages_color || 0).toLocaleString()}</td>
+      <td class="mono">${(r.pages_total_estimated || 0).toLocaleString()}</td>
+      <td class="mono">${(r.pages_bn_estimated ?? r.pages_bn ?? 0).toLocaleString()}</td>
+      <td class="mono">${(r.pages_color_estimated ?? r.pages_color ?? 0).toLocaleString()}</td>
       <td class="mono">${(r.jobs_completed || 0).toLocaleString()}</td>
       <td class="mono">${(r.jobs_failed || 0).toLocaleString()}</td>
     </tr>`).join("");
@@ -1366,7 +1371,7 @@ function impRenderRows(rows) {
   if (pageEl) pageEl.textContent = String(impPage);
   if (!tbody) return;
   if (!rows || !rows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin registros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin registros</td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map(r => `
@@ -1379,6 +1384,8 @@ function impRenderRows(rows) {
       <td>${r.document || ""}</td>
       <td>${r.print_type || ""}</td>
       <td class="mono">${(r.pages || 0).toLocaleString()}</td>
+      <td class="mono">${(r.pages_estimated || 0).toLocaleString()}</td>
+      <td class="mono">${(r.copies_requested || 1).toLocaleString()}</td>
       <td>${r.status || ""}${r.error_code ? ` (${r.error_code})` : ""}</td>
       <td><button class="btn btn-danger" style="padding:4px 8px;font-size:0.65rem;" onclick="impEliminar(${r.id})">Eliminar</button></td>
     </tr>`).join("");
@@ -1463,34 +1470,39 @@ async function impUpdateVendorWidget() {
     const vTot = document.getElementById("v-imp-total");
     const vBn = document.getElementById("v-imp-bn");
     const vCol = document.getElementById("v-imp-color");
-    if (vTot) vTot.textContent = (t.pages_total ?? 0).toLocaleString();
-    if (vBn) vBn.textContent = (t.pages_bn ?? 0).toLocaleString();
-    if (vCol) vCol.textContent = (t.pages_color ?? 0).toLocaleString();
+    if (vTot) vTot.textContent = (t.pages_total_estimated ?? t.pages_total ?? 0).toLocaleString();
+    if (vBn) vBn.textContent = (t.pages_bn_estimated ?? t.pages_bn ?? 0).toLocaleString();
+    if (vCol) vCol.textContent = (t.pages_color_estimated ?? t.pages_color ?? 0).toLocaleString();
+    const vConf = document.getElementById("v-imp-total-conf");
+    const vEst = document.getElementById("v-imp-total-est");
+    if (vConf) vConf.textContent = (t.pages_total ?? 0).toLocaleString();
+    if (vEst) vEst.textContent = (t.pages_total_estimated ?? 0).toLocaleString();
 
     try {
       const tbody = document.getElementById("v-imp-by-printer");
       if (!tbody) return;
       if (!effectiveUserFull) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
         return;
       }
       const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed" });
       const rows = sum?.by_printer || [];
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
         return;
       }
       tbody.innerHTML = rows.map(r => `
         <tr>
           <td>${r.printer_name || ""}</td>
           <td class="mono">${(r.pages_total || 0).toLocaleString()}</td>
-          <td class="mono">${(r.pages_bn || 0).toLocaleString()}</td>
-          <td class="mono">${(r.pages_color || 0).toLocaleString()}</td>
+          <td class="mono">${(r.pages_total_estimated || 0).toLocaleString()}</td>
+          <td class="mono">${(r.pages_bn_estimated ?? r.pages_bn ?? 0).toLocaleString()}</td>
+          <td class="mono">${(r.pages_color_estimated ?? r.pages_color ?? 0).toLocaleString()}</td>
         </tr>
       `).join("");
     } catch {
       const tbody = document.getElementById("v-imp-by-printer");
-      if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
     }
   } catch {}
 }

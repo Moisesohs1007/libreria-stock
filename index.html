@@ -77,9 +77,13 @@
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">Mi Conteo de Impresiones</div>
       <div class="grid grid-cols-3 gap-3">
-        <div class="stat-box"><div class="stat-num" id="v-imp-total" style="color:#10b981;">0</div><div class="stat-label">Total páginas</div></div>
-        <div class="stat-box"><div class="stat-num" id="v-imp-bn" style="color:#94a3b8;">0</div><div class="stat-label">B/N</div></div>
-        <div class="stat-box"><div class="stat-num" id="v-imp-color" style="color:#f59e0b;">0</div><div class="stat-label">Color</div></div>
+        <div class="stat-box"><div class="stat-num" id="v-imp-total" style="color:#10b981;">0</div><div class="stat-label">Total (estimadas)</div></div>
+        <div class="stat-box"><div class="stat-num" id="v-imp-bn" style="color:#94a3b8;">0</div><div class="stat-label">B/N (estimadas)</div></div>
+        <div class="stat-box"><div class="stat-num" id="v-imp-color" style="color:#f59e0b;">0</div><div class="stat-label">Color (estimadas)</div></div>
+      </div>
+      <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;display:flex;gap:10px;flex-wrap:wrap;">
+        <span>Confirmadas: <span id="v-imp-total-conf" style="font-weight:800;">0</span></span>
+        <span>Estimadas (copias): <span id="v-imp-total-est" style="font-weight:800;">0</span></span>
       </div>
       <div style="margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;letter-spacing:1px;text-transform:uppercase;">
         Por impresora
@@ -89,13 +93,14 @@
           <thead>
             <tr>
               <th>IMPRESORA</th>
-              <th class="mono">TOTAL</th>
+              <th class="mono">CONF</th>
+              <th class="mono">EST</th>
               <th class="mono">B/N</th>
               <th class="mono">COLOR</th>
             </tr>
           </thead>
           <tbody id="v-imp-by-printer">
-            <tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>
+            <tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>
           </tbody>
         </table>
       </div>
@@ -934,10 +939,14 @@
         <div class="card">
           <div class="card-title">Totales</div>
           <div class="grid grid-cols-2 gap-3">
-            <div class="stat-box"><div class="stat-num" id="imp-total" style="color:#10b981;">0</div><div class="stat-label">Páginas</div></div>
+            <div class="stat-box"><div class="stat-num" id="imp-total" style="color:#10b981;">0</div><div class="stat-label">Páginas (estimadas)</div></div>
             <div class="stat-box"><div class="stat-num" id="imp-ok" style="color:#60a5fa;">0</div><div class="stat-label">Trabajos OK</div></div>
-            <div class="stat-box"><div class="stat-num" id="imp-bn" style="color:#94a3b8;">0</div><div class="stat-label">B/N</div></div>
-            <div class="stat-box"><div class="stat-num" id="imp-color" style="color:#f59e0b;">0</div><div class="stat-label">Color</div></div>
+            <div class="stat-box"><div class="stat-num" id="imp-bn" style="color:#94a3b8;">0</div><div class="stat-label">B/N (estimadas)</div></div>
+            <div class="stat-box"><div class="stat-num" id="imp-color" style="color:#f59e0b;">0</div><div class="stat-label">Color (estimadas)</div></div>
+          </div>
+          <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;display:flex;gap:10px;flex-wrap:wrap;">
+            <span>Confirmadas: <span id="imp-total-conf" style="font-weight:800;">0</span></span>
+            <span>Estimadas (copias): <span id="imp-total-est" style="font-weight:800;">0</span></span>
           </div>
           <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
             Actualiza cada 30s — <span id="imp-ultima">—</span>
@@ -947,8 +956,8 @@
           <div class="card-title">Totales por impresora</div>
           <div style="overflow-x:auto;">
             <table class="tabla">
-              <thead><tr><th>Impresora</th><th>Total</th><th>B/N</th><th>Color</th><th>OK</th><th>Fallidos</th></tr></thead>
-              <tbody id="imp-by-printer"><tr><td colspan="6" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
+              <thead><tr><th>Impresora</th><th>Confirmadas</th><th>Estimadas</th><th>B/N</th><th>Color</th><th>OK</th><th>Fallidos</th></tr></thead>
+              <tbody id="imp-by-printer"><tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -958,8 +967,8 @@
         <div class="card-title">Registros</div>
         <div style="overflow-x:auto;">
           <table class="tabla">
-            <thead><tr><th>ID</th><th>Creado</th><th>Completado</th><th>Impresora</th><th>Usuario</th><th>Documento</th><th>Tipo</th><th>Páginas</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="imp-rows"><tr><td colspan="10" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Cargando...</td></tr></tbody>
+            <thead><tr><th>ID</th><th>Creado</th><th>Completado</th><th>Impresora</th><th>Usuario</th><th>Documento</th><th>Tipo</th><th>Conf</th><th>Est</th><th>Copias</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="imp-rows"><tr><td colspan="12" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Cargando...</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap;">
