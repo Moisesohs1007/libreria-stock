@@ -282,6 +282,7 @@
         <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config. Ricoh MP5055')">  Ricoh MP5055</button>
         <button class="sidebar-btn"        id="sb-usuarios"   onclick="cambiarTabSidebar('tab-usuarios','sb-usuarios','Usuarios')">  Usuarios</button>
         <button class="sidebar-btn"        id="sb-etiquetas"  onclick="cambiarTabSidebar('tab-etiquetas','sb-etiquetas','Etiquetas')">  Etiquetas</button>
+        <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','Instalación — Conteo de Impresiones')">  Instalación Conteo</button>
 
       </div>
     </div>
@@ -332,6 +333,7 @@
           <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Ricoh MP5055','dtg-config')">Ricoh MP5055</button>
           <button class="dt-drop-item" id="dt-usuarios"  onclick="selDt('tab-usuarios','dt-usuarios','Usuarios','dtg-config')">Usuarios</button>
           <button class="dt-drop-item" id="dt-etiquetas" onclick="selDt('tab-etiquetas','dt-etiquetas','Etiquetas','dtg-config')">Etiquetas</button>
+          <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','Instalación — Conteo de Impresiones','dtg-config')">Instalación Conteo</button>
         </div>
       </div>
 
@@ -497,6 +499,40 @@
         <div class="card">
           <div class="card-title">Vendedores activos</div>
           <div id="lista-vendedores"><div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Cargando...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB CONFIGURACIÓN — CONTEO DE IMPRESIONES -->
+    <div id="tab-impresiones-svc" class="tab-panel">
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">Instalación — Conteo de Impresiones</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
+            <label class="input-label">URL del servicio</label>
+            <input id="imp-svc-url" class="input-field" placeholder="http://localhost:5056">
+          </div>
+          <div style="min-width:160px;">
+            <label class="input-label">Token (opcional)</label>
+            <input id="imp-svc-token" class="input-field" placeholder="X-Print-Token">
+          </div>
+          <button onclick="impGuardarConfig()" class="btn btn-primary" style="height:40px;">Guardar</button>
+          <button onclick="impProbarConexion()" class="btn btn-info" style="height:40px;">Probar</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#888;">
+            <div class="dot" id="imp-dot" style="animation:none;background:#f87171;"></div>
+            <span id="imp-estado">sin conexión</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <a href="installer/setup_conteo_impresiones.cmd" download class="btn btn-primary" onclick="impMostrarNotaInstalador()">Descargar instalador 1 clic</a>
+          <a href="installer/setup_conteo_impresiones_silencioso.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Instalador silencioso</a>
+          <a href="installer/iniciar_conteo_impresiones.cmd" download class="btn btn-info" onclick="impMostrarNotaInstalador()">Descargar iniciador</a>
+          <a href="installer/detener_conteo_impresiones.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Descargar detener</a>
+          <a href="installer/desinstalar_conteo_impresiones.cmd" download class="btn btn-danger" onclick="impMostrarNotaInstalador()">Descargar desinstalar</a>
+          <a href="installer/README.md" target="_blank" class="btn" style="background:#e8f4ff;">Guía técnica</a>
+        </div>
+        <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
+          Descarga y ejecuta estos .cmd/.ps1 en la PC donde está conectada la impresora. Se pedirá UAC (Administrador). Logs en C:\LibreriaPrintMonitor\logs.
         </div>
       </div>
     </div>
@@ -828,37 +864,6 @@
     </div><!-- fin tab-ricoh-rep -->
 
     <div id="tab-impresiones" class="tab-panel">
-      <div class="card" style="margin-bottom:14px;">
-        <div class="card-title">Servicio de Conteo de Impresiones</div>
-        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-          <div style="flex:1;min-width:220px;">
-            <label class="input-label">URL del servicio</label>
-            <input id="imp-svc-url" class="input-field" placeholder="http://localhost:5056">
-          </div>
-          <div style="min-width:160px;">
-            <label class="input-label">Token (opcional)</label>
-            <input id="imp-svc-token" class="input-field" placeholder="X-Print-Token">
-          </div>
-          <button onclick="impGuardarConfig()" class="btn btn-primary" style="height:40px;">Guardar</button>
-          <button onclick="impProbarConexion()" class="btn btn-info" style="height:40px;">Probar</button>
-          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#888;">
-            <div class="dot" id="imp-dot" style="animation:none;background:#f87171;"></div>
-            <span id="imp-estado">sin conexión</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-          <a href="installer/setup_conteo_impresiones.cmd" download class="btn btn-primary" onclick="impMostrarNotaInstalador()">Descargar instalador 1 clic</a>
-          <a href="installer/setup_conteo_impresiones_silencioso.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Instalador silencioso</a>
-          <a href="installer/iniciar_conteo_impresiones.cmd" download class="btn btn-info" onclick="impMostrarNotaInstalador()">Descargar iniciador</a>
-          <a href="installer/detener_conteo_impresiones.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Descargar detener</a>
-          <a href="installer/desinstalar_conteo_impresiones.cmd" download class="btn btn-danger" onclick="impMostrarNotaInstalador()">Descargar desinstalar</a>
-          <a href="print_service/README.md" target="_blank" class="btn" style="background:#e8f4ff;">Guía técnica</a>
-        </div>
-        <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
-          Descarga y ejecuta estos .cmd/.ps1 en la PC donde está conectada la impresora. Se pedirá UAC (Administrador). El instalador deja logs en C:\LibreriaPrintMonitor\logs.
-        </div>
-      </div>
-
       <div class="card" style="margin-bottom:14px;">
         <div class="card-title">Filtros</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">

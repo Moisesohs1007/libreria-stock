@@ -1330,21 +1330,26 @@ window.impExportarPdf = async function() {
 };
 
 window._impOnTab = function(tabId) {
-  if (tabId !== "tab-impresiones") return;
+  if (impAutoTimer) clearInterval(impAutoTimer);
+  impAutoTimer = null;
+  if (tabId !== "tab-impresiones" && tabId !== "tab-impresiones-svc") return;
   impLoadCfg();
   impConnectSocket();
   (async () => {
     try {
       await impFetchJson("/api/prints/health");
       impSetConn(true, "conectado");
-      await impLoadMeta();
-      await impRefreshAll();
+      if (tabId === "tab-impresiones") {
+        await impLoadMeta();
+        await impRefreshAll();
+      }
     } catch {
       impSetConn(false, "sin conexión");
     }
   })();
-  if (impAutoTimer) clearInterval(impAutoTimer);
-  impAutoTimer = setInterval(() => { impRefreshAll().catch(() => {}); }, 30000);
+  if (tabId === "tab-impresiones") {
+    impAutoTimer = setInterval(() => { impRefreshAll().catch(() => {}); }, 30000);
+  }
 };
 
 window._impAfterLogin = function() {
