@@ -20,19 +20,22 @@ def safe_int(x, default=0):
     return default
 
 
-def choose_pages(total_pages, pages_printed, copies, ok):
+def choose_pages(total_pages, pages_printed, copies, queue_delta, ok):
   tp = safe_int(total_pages, default=0)
   pp = safe_int(pages_printed, default=0)
   c = safe_int(copies, default=1)
   if c <= 0:
     c = 1
+  qd = safe_int(queue_delta, default=0)
+  if qd < 0:
+    qd = 0
   base = max(tp, pp, 0)
   scaled = 0
   if tp > 0:
     scaled = tp * c
   elif pp > 0:
     scaled = pp * c
-  pages = max(base, scaled)
+  pages = max(base, scaled, qd)
   if pages > 0:
     return pages
   if ok:
@@ -59,6 +62,26 @@ def read_copies(job_info, printer_info=None):
     return c if c > 0 else 1
   except Exception:
     return 1
+
+
+def read_queue_total_pages(wmi_conn, printer_name):
+  try:
+    qs = wmi_conn.Win32_PerfFormattedData_Spooler_PrintQueue(Name=printer_name)
+    if qs:
+      v = getattr(qs[0], "TotalPagesPrinted", None)
+      if v is not None:
+        return safe_int(v, default=None)
+  except Exception:
+    pass
+  try:
+    qs = wmi_conn.Win32_PerfRawData_Spooler_PrintQueue(Name=printer_name)
+    if qs:
+      v = getattr(qs[0], "TotalPagesPrinted", None)
+      if v is not None:
+        return safe_int(v, default=None)
+  except Exception:
+    pass
+  return None
 
 
 def classify_print_type(job_info, printer_info=None):
@@ -224,7 +247,9 @@ class PrintMonitor:
     last_flags = None
     last_type = "Desconocido"
     last_error = None
+    queue_base = None
     try:
+      queue_base = read_queue_total_pages(wmi_conn, printer_name)
       printer_handle = win32print.OpenPrinter(printer_name)
       try:
         pinfo = win32print.GetPrinter(printer_handle, 2)
@@ -245,7 +270,7 @@ class PrintMonitor:
           total_pages = safe_int(job_info.get("TotalPages", None), default=0)
           pages_printed = safe_int(job_info.get("PagesPrinted", None), default=0)
           copies = read_copies(job_info, pinfo)
-          pages = choose_pages(total_pages, pages_printed, copies, ok=True)
+          pages = choose_pages(total_pages, pages_printed, copies, 0, ok=True)
           if pages > 0:
             last_pages = pages
           last_type = classify_print_type(job_info, pinfo)
@@ -265,7 +290,11 @@ class PrintMonitor:
         ok = is_success(last_flags, printer_state, last_error)
         completed_ts = now_tz_iso()
         from .db import update_print_job, insert_event
-        final_pages = choose_pages(last_pages, last_pages, 1, ok)
+        queue_now = read_queue_total_pages(wmi_conn, printer_name)
+        queue_delta = 0
+        if queue_base is not None and queue_now is not None:
+          queue_delta = queue_now - queue_base
+        final_pages = choose_pages(last_pages, last_pages, 1, queue_delta, ok)
         patch = {
           "pages": int(final_pages),
           "print_type": last_type,
