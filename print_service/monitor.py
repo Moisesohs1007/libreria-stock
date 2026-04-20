@@ -260,7 +260,8 @@ class PrintMonitor:
     last_copies = 1
     last_flags = None
     last_type = "Desconocido"
-    last_error = None
+    err_code = None
+    err_streak = 0
     try:
       printer_handle = win32print.OpenPrinter(printer_name)
       try:
@@ -294,15 +295,21 @@ class PrintMonitor:
           if pages > 0:
             last_pages = pages
           last_type = classify_print_type(job_info, pinfo)
-          last_error = derive_error_code(flags, None)
-          if last_error:
-            break
+          code = derive_error_code(flags, None)
+          if code:
+            if code == err_code:
+              err_streak += 1
+            else:
+              err_code = code
+              err_streak = 1
+          else:
+            err_code = None
+            err_streak = 0
           time.sleep(self.poll_interval_s)
           continue
 
         printer_state = get_printer_error_state(wmi_conn, printer_name)
-        last_error = last_error or derive_error_code(last_flags, printer_state)
-        ok = is_success(last_flags, printer_state, last_error)
+        final_error = derive_error_code(last_flags, printer_state)
         completed_ts = now_tz_iso()
         from .db import update_print_job, insert_event
         queue_delta = 0
@@ -316,6 +323,15 @@ class PrintMonitor:
                 best = d
             time.sleep(0.5)
           queue_delta = best
+
+        if final_error is None and err_code and err_streak >= 3:
+          final_error = err_code
+
+        has_evidence = (queue_delta > 0) or (last_pages > 0) or (last_pages_per_copy > 0)
+        if final_error in ("OFFLINE", "JOB_ERROR", "USER_INTERVENTION") and has_evidence:
+          final_error = None
+
+        ok = final_error is None
         final_pages = choose_pages(last_pages, last_pages, 1, queue_delta, ok)
         pages_per_copy = last_pages_per_copy or (1 if ok else 0)
         pages_estimated = 0
@@ -330,7 +346,7 @@ class PrintMonitor:
           "print_type": last_type,
           "ts_completed": completed_ts,
           "status": "completed" if ok else "failed",
-          "error_code": last_error,
+          "error_code": final_error,
           "raw_status": last_flags,
         }
 
