@@ -231,9 +231,11 @@ function Write-RunScript {
     $tokenLine,
     "set PRINT_DB_PATH=%ProgramData%\LibreriaPrintMonitor\print_jobs.sqlite3",
     "set PYTHONPATH=$app",
+    "set PYEXE=$py",
     "if not exist ""$logs"" mkdir ""$logs""",
     "set LOGFILE=$logs\service.log",
-    """" + $py + """" + " -m print_service.server >> ""%LOGFILE%"" 2>&1"
+    "if not exist ""%PYEXE%"" (echo [ERROR] No existe %PYEXE% & exit /b 1)",
+    """%PYEXE%"" -m print_service.server >> ""%LOGFILE%"" 2>&1"
   ) | Where-Object { $_ -ne "" }
   Set-Content -Path $script -Value $content -Encoding ASCII
   Write-Log "Script creado: $script" "INFO"
