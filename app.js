@@ -1231,6 +1231,10 @@ function impConnectSocket() {
   } catch {}
 }
 
+window.impMostrarNotaInstalador = function() {
+  mostrarMensaje("Descarga completada. Ejecuta el .bat como Administrador en la PC de la impresora.", "info");
+};
+
 window.impGuardarConfig = function() {
   impSaveCfg();
   impConnectSocket();

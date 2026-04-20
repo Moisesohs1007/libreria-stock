@@ -15,6 +15,14 @@ Este módulo agrega un servicio local (Windows) que captura trabajos de impresi�
 - Iniciar servicio:
   - `py -m print_service.server`
 
+## Instalación rápida desde el panel admin
+
+- En la pestaña **Conteo de Impresiones** descarga:
+  - `instalar_conteo_impresiones.bat`
+  - `iniciar_conteo_impresiones.bat`
+  - `desinstalar_conteo_impresiones.bat`
+- Ejecuta el instalador en la PC donde está conectada la impresora.
+
 Variables de entorno:
 - `PRINT_HOST` (default `0.0.0.0`)
 - `PRINT_PORT` (default `5056`)
