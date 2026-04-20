@@ -1427,7 +1427,8 @@ async function impUpdateVendorWidget() {
   const candidate = (usuario || nombre || "").trim();
   if (!candidate) return;
   try {
-    let r = await impFetchJson("/api/prints/my-summary", { user_id: candidate });
+    let effectiveUser = candidate;
+    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUser });
     let t = r.totals || {};
     const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
     if (isAllZero) {
@@ -1452,7 +1453,8 @@ async function impUpdateVendorWidget() {
           }
           if (!bestOwner) bestOwner = userStrings[0].split("@")[0].trim();
           if (bestOwner && bestOwner !== candidate) {
-            r = await impFetchJson("/api/prints/my-summary", { user_id: bestOwner });
+            effectiveUser = bestOwner;
+            r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUser });
             t = r.totals || t;
           }
         }
@@ -1464,6 +1466,16 @@ async function impUpdateVendorWidget() {
     if (vTot) vTot.textContent = (t.pages_total ?? 0).toLocaleString();
     if (vBn) vBn.textContent = (t.pages_bn ?? 0).toLocaleString();
     if (vCol) vCol.textContent = (t.pages_color ?? 0).toLocaleString();
+
+    try {
+      const list = await impFetchJson("/api/prints", { users: effectiveUser, status: "completed", limit: 1, offset: 0 });
+      const row = (list?.rows && list.rows.length) ? list.rows[0] : null;
+      const p = document.getElementById("v-imp-printer");
+      if (p) p.textContent = row?.printer_name || "—";
+    } catch {
+      const p = document.getElementById("v-imp-printer");
+      if (p) p.textContent = "—";
+    }
   } catch {}
 }
 
