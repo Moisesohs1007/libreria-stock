@@ -16,6 +16,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='Sil
 )
 echo Instalador guardado en: %PS1%
 
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$null=[scriptblock]::Create((Get-Content -Raw '%PS1%'))" || (
+  echo [ERROR] El script descargado tiene error de sintaxis.
+  echo Borra cache temporal y vuelve a intentar:
+  echo   rmdir /s /q "%DL_DIR%"
+  pause
+  exit /b 1
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode install
 set "EC=%errorlevel%"
 if not "%EC%"=="0" (

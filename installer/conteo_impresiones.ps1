@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [ValidateSet("install","update","uninstall","start","stop")][string]$Mode = "install",
   [switch]$Silent,
@@ -8,6 +6,8 @@ param(
   [int]$Port = 5056,
   [string]$Token = ""
 )
+
+$ErrorActionPreference = "Stop"
 
 function Write-Log {
   param(
