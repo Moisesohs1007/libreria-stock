@@ -933,6 +933,96 @@ window.ricohRepGuardarManual = async function() {
 // COPIAS FIADAS
 // =============================================
 let clientesFiados = [];
+const FIADA_PRECIO = 0.10;
+
+function _fmtSoles(n) {
+  const v = Number(n || 0);
+  return `S/ ${v.toFixed(2)}`;
+}
+
+function _toInt(v) {
+  const n = parseInt(String(v ?? "").trim(), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function _fiadaCalc(prefix) {
+  const caraEl = document.getElementById(`${prefix}-fiada-cara`);
+  const duplexEl = document.getElementById(`${prefix}-fiada-duplex`);
+  const cara = Math.max(0, _toInt(caraEl?.value));
+  const duplex = Math.max(0, _toInt(duplexEl?.value));
+  const carasFisicas = cara + (duplex * 2);
+  const total = carasFisicas * FIADA_PRECIO;
+
+  const cont = document.getElementById(`${prefix}-fiada-contador`);
+  if (cont) cont.textContent = String(carasFisicas);
+
+  const rCara = document.getElementById(`${prefix}-fiada-r-cara`);
+  const rDuplex = document.getElementById(`${prefix}-fiada-r-duplex`);
+  const rCont = document.getElementById(`${prefix}-fiada-r-cont`);
+  const rTotal = document.getElementById(`${prefix}-fiada-r-total`);
+  if (rCara) rCara.textContent = `${cara} - ${_fmtSoles(FIADA_PRECIO)} = ${_fmtSoles(cara * FIADA_PRECIO)}`;
+  if (rDuplex) rDuplex.textContent = `${duplex} - ${_fmtSoles(FIADA_PRECIO)} = ${_fmtSoles((duplex * 2) * FIADA_PRECIO)}`;
+  if (rCont) rCont.textContent = String(carasFisicas);
+  if (rTotal) rTotal.textContent = _fmtSoles(total);
+
+  return { cara, duplex, carasFisicas, total };
+}
+
+function _fiadaSelect(prefix) {
+  const sel = document.getElementById(`${prefix}-fiada-sel`);
+  const form = document.getElementById(`${prefix}-fiada-form`);
+  const lbl = document.getElementById(`${prefix}-fiada-nombre-lbl`);
+  const id = (sel?.value || "").trim();
+  if (!id) {
+    if (form) form.style.display = "none";
+    if (lbl) lbl.textContent = "";
+    return;
+  }
+  const cli = clientesFiados.find(c => c.id === id);
+  if (lbl) lbl.textContent = cli?.nombre || "";
+  if (form) form.style.display = "block";
+  const caraEl = document.getElementById(`${prefix}-fiada-cara`);
+  const duplexEl = document.getElementById(`${prefix}-fiada-duplex`);
+  if (caraEl) caraEl.value = "0";
+  if (duplexEl) duplexEl.value = "0";
+  _fiadaCalc(prefix);
+}
+
+async function _fiadaAddCliente(prefix) {
+  const input = document.getElementById(`${prefix}-fiada-nuevo`);
+  const nombre = (input?.value || "").trim();
+  if (!nombre) return mostrarMensaje("⚠️ Escribe el nombre del cliente", "warning");
+  try {
+    await addDoc(collection(db, "clientesFiados"), { nombre, creadoEn: new Date() });
+    if (input) input.value = "";
+    mostrarMensaje("✅ Cliente agregado", "ok");
+  } catch {
+    mostrarMensaje("❌ No se pudo agregar", "error");
+  }
+}
+
+async function _fiadaGuardar(prefix) {
+  const sel = document.getElementById(`${prefix}-fiada-sel`);
+  const id = (sel?.value || "").trim();
+  if (!id) return mostrarMensaje("⚠️ Selecciona cliente", "warning");
+  const cli = clientesFiados.find(c => c.id === id);
+  if (!cli) return mostrarMensaje("⚠️ Cliente inválido", "error");
+  const { cara, duplex, carasFisicas, total } = _fiadaCalc(prefix);
+  if (carasFisicas <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
+  try {
+    await addDoc(collection(db, "copiasFiadas"), { cliente: cli.nombre, cara, duplex, carasFisicas, total, precio: FIADA_PRECIO, fecha: new Date() });
+    const msg = document.getElementById(`${prefix}-fiada-msg`);
+    if (msg) {
+      msg.textContent = `✅ Guardado: ${cli.nombre} · ${carasFisicas} caras · ${_fmtSoles(total)}`;
+      msg.style.display = "block";
+      setTimeout(() => { msg.style.display = "none"; }, 3000);
+    }
+    mostrarMensaje("✅ Fiada guardada", "ok");
+    _fiadaSelect(prefix);
+  } catch {
+    mostrarMensaje("❌ Error guardando fiada", "error");
+  }
+}
 function cargarClientesFiados() {
   onSnapshot(collection(db,"clientesFiados"), snap => {
     clientesFiados = snap.docs.map(d => ({id:d.id,...d.data()}));
@@ -946,20 +1036,52 @@ function cargarFiadasDia() {
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   onSnapshot(collection(db,"copiasFiadas"), snap => {
     const fiadas = snap.docs.map(d=>d.data()).filter(f=>(f.fecha?.toDate ? f.fecha.toDate() : new Date(f.fecha)) >= hoy);
-    const total = fiadas.reduce((s,f)=>s+(f.total||0),0);
+    const total = fiadas.reduce((s,f)=> {
+      const cara = _toInt(f.cara);
+      const duplex = _toInt(f.duplex);
+      const carasFisicas = _toInt(f.carasFisicas) || (cara + duplex * 2);
+      return s + (carasFisicas * FIADA_PRECIO);
+    },0);
     if(document.getElementById("a-fiada-total-dia")) document.getElementById("a-fiada-total-dia").textContent = "S/ "+total.toFixed(2);
   });
 }
 
+window.cambiarTabVendedor = function(tabId, btn) {
+  document.querySelectorAll("#vendedor-screen .tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll("#vendedor-screen .tab-btn").forEach(b => b.classList.remove("active"));
+  const panel = document.getElementById(tabId);
+  if (panel) panel.classList.add("active");
+  if (btn) btn.classList.add("active");
+};
+
+window.vFiadaSeleccionar = function() { _fiadaSelect("v"); };
+window.aFiadaSeleccionar = function() { _fiadaSelect("a"); };
+window.vFiadaCalc = function() { _fiadaCalc("v"); };
+window.aFiadaCalc = function() { _fiadaCalc("a"); };
+window.vFiadaAgregarCliente = function() { return _fiadaAddCliente("v"); };
+window.aFiadaAgregarCliente = function() { return _fiadaAddCliente("a"); };
+window.aFiadaGuardar = function() { return _fiadaGuardar("a"); };
+
 window.vFiadaGuardar = async function() {
-  const id = document.getElementById("v-fiada-sel").value;
-  const cara = parseInt(document.getElementById("v-fiada-cara").value) || 0;
-  const duplex = parseInt(document.getElementById("v-fiada-duplex").value) || 0;
-  if(!id) return mostrarMensaje("⚠️ Selecciona cliente","warning");
-  const cli = clientesFiados.find(c=>c.id===id);
-  const total = (cara + duplex) * 0.10;
-  await addDoc(collection(db,"copiasFiadas"), {cliente:cli.nombre, cara, duplex, total, fecha:new Date()});
-  mostrarMensaje("✅ Fiada guardada","ok");
+  return _fiadaGuardar("v");
+};
+
+window.vMalGuardar = async function() {
+  const cant = parseInt(document.getElementById("v-mal-cant")?.value || "0", 10) || 0;
+  if (cant <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
+  try {
+    await addDoc(collection(db, "hojasMalogradas"), { cantidad: cant, fecha: new Date() });
+    const el = document.getElementById("v-mal-cant"); if (el) el.value = "0";
+    const msg = document.getElementById("v-mal-msg");
+    if (msg) {
+      msg.textContent = `✅ Guardado: ${cant} hoja(s)`;
+      msg.style.display = "block";
+      setTimeout(() => { msg.style.display = "none"; }, 3000);
+    }
+    mostrarMensaje("⚠️ Malograda registrada", "warning");
+  } catch {
+    mostrarMensaje("❌ Error guardando", "error");
+  }
 };
 
 window.aMalGuardar = async function() {
@@ -970,9 +1092,115 @@ window.aMalGuardar = async function() {
 };
 
 window.switchRepTab = (p, b) => {
-  document.querySelectorAll(".rep-panel").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll("#tab-reporte .rep-panel").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll("#tab-reporte .rep-tab-btn").forEach(x=>x.classList.remove("active"));
   document.getElementById(p).classList.add("active");
+  const btn = document.getElementById(b);
+  if (btn) btn.classList.add("active");
 };
+
+window.switchRepTabV = (p, b) => {
+  document.querySelectorAll("#vtab-reporte-v .rep-panel").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll("#vtab-reporte-v .rep-tab-btn").forEach(x=>x.classList.remove("active"));
+  document.getElementById(p).classList.add("active");
+  const btn = document.getElementById(b);
+  if (btn) btn.classList.add("active");
+};
+
+function _rangeFromInputs(prefix) {
+  const isV = prefix === "v";
+  const dia = document.getElementById(isV ? "vrep-dia" : "rep-dia")?.value || "";
+  const desde = document.getElementById(isV ? "vrep-desde" : "rep-desde")?.value || "";
+  const hasta = document.getElementById(isV ? "vrep-hasta" : "rep-hasta")?.value || "";
+  if (dia) {
+    const d1 = new Date(`${dia}T00:00:00`);
+    const d2 = new Date(`${dia}T23:59:59`);
+    return { from: d1, to: d2, title: `Reporte del ${dia}` };
+  }
+  if (desde && hasta) {
+    const d1 = new Date(`${desde}T00:00:00`);
+    const d2 = new Date(`${hasta}T23:59:59`);
+    return { from: d1, to: d2, title: `Reporte ${desde} → ${hasta}` };
+  }
+  return null;
+}
+
+async function _generarReporte(prefix) {
+  const r = _rangeFromInputs(prefix);
+  if (!r) return mostrarMensaje("⚠️ Selecciona día o rango", "warning");
+  const { from, to, title } = r;
+  try {
+    const qFiadas = query(collection(db, "copiasFiadas"), where("fecha", ">=", from), where("fecha", "<=", to));
+    const sFiadas = await getDocs(qFiadas);
+    const rows = sFiadas.docs.map(d => d.data());
+
+    const byCliente = new Map();
+    let carasTotal = 0;
+    for (const f of rows) {
+      const cliente = String(f.cliente || "—").trim() || "—";
+      const cara = _toInt(f.cara);
+      const duplex = _toInt(f.duplex);
+      const carasFisicas = _toInt(f.carasFisicas) || (cara + duplex * 2);
+      const deuda = carasFisicas * FIADA_PRECIO;
+      carasTotal += carasFisicas;
+      const cur = byCliente.get(cliente) || { cliente, cara: 0, duplex: 0, carasFisicas: 0, deuda: 0 };
+      cur.cara += cara;
+      cur.duplex += duplex;
+      cur.carasFisicas += carasFisicas;
+      cur.deuda += deuda;
+      byCliente.set(cliente, cur);
+    }
+
+    const qMal = query(collection(db, "hojasMalogradas"), where("fecha", ">=", from), where("fecha", "<=", to));
+    const sMal = await getDocs(qMal);
+    const mal = sMal.docs.map(d => d.data()).reduce((s, x) => s + _toInt(x.cantidad), 0);
+
+    const deudaTotal = Array.from(byCliente.values()).reduce((s, x) => s + x.deuda, 0);
+    const ganancia = deudaTotal;
+    const neta = ganancia - (mal * FIADA_PRECIO);
+
+    const isV = prefix === "v";
+    const box = document.getElementById(isV ? "vrep-resultado" : "reporte-resultado");
+    if (box) box.style.display = "block";
+    const tit = document.getElementById(isV ? "vrep-titulo" : "rep-titulo");
+    if (tit) tit.textContent = title;
+    const elG = document.getElementById(isV ? "vrep-ganancia" : "rep-ganancia");
+    const elC = document.getElementById(isV ? "vrep-copias" : "rep-copias");
+    const elD = document.getElementById(isV ? "vrep-deuda" : "rep-deuda");
+    const elM = document.getElementById(isV ? "vrep-mal" : "rep-mal");
+    const elM2 = document.getElementById(isV ? "vrep-mal2" : "rep-mal2");
+    const elN = document.getElementById(isV ? "vrep-neta" : "rep-neta");
+    if (elG) elG.textContent = _fmtSoles(ganancia);
+    if (elC) elC.textContent = String(carasTotal);
+    if (elD) elD.textContent = _fmtSoles(deudaTotal);
+    if (elM) elM.textContent = String(mal);
+    if (elM2) elM2.textContent = `${mal} hojas`;
+    if (elN) elN.textContent = _fmtSoles(neta);
+
+    const tbody = document.getElementById(isV ? "vrep-detalle" : "rep-detalle");
+    const det = Array.from(byCliente.values()).sort((a, b) => (b.deuda - a.deuda) || a.cliente.localeCompare(b.cliente));
+    if (tbody) {
+      if (!det.length) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>`;
+      } else {
+        tbody.innerHTML = det.map(x => `
+          <tr>
+            <td>${x.cliente}</td>
+            <td class="mono">${x.cara}</td>
+            <td class="mono">${x.duplex}</td>
+            <td class="mono">${x.carasFisicas}</td>
+            <td class="mono">${_fmtSoles(x.deuda)}</td>
+          </tr>
+        `).join("");
+      }
+    }
+  } catch {
+    mostrarMensaje("❌ Error generando reporte", "error");
+  }
+}
+
+window.generarReporteDeudas = function() { return _generarReporte("a"); };
+window.generarReporteDeudasV = function() { return _generarReporte("v"); };
 
 window.ayudaSeguridad = () => alert("Para activar el escáner, permite 'Contenido no seguro' en la configuración del sitio (icono candado).");
 
@@ -1199,8 +1427,22 @@ async function impUpdateVendorWidget() {
   const candidate = (usuario || nombre || "").trim();
   if (!candidate) return;
   try {
-    const r = await impFetchJson("/api/prints/my-summary", { user_id: candidate });
-    const t = r.totals || {};
+    let r = await impFetchJson("/api/prints/my-summary", { user_id: candidate });
+    let t = r.totals || {};
+    const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
+    if (isAllZero) {
+      try {
+        const meta = await impFetchJson("/api/prints/meta");
+        const users = meta?.users || [];
+        if (users.length === 1 && typeof users[0] === "string") {
+          const owner = users[0].split("@")[0].trim();
+          if (owner && owner !== candidate) {
+            r = await impFetchJson("/api/prints/my-summary", { user_id: owner });
+            t = r.totals || t;
+          }
+        }
+      } catch {}
+    }
     const vTot = document.getElementById("v-imp-total");
     const vBn = document.getElementById("v-imp-bn");
     const vCol = document.getElementById("v-imp-color");
