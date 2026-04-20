@@ -243,25 +243,25 @@ function Install-Task {
   param([string]$Root)
   $task = "LibreriaPrintMonitor"
   $cmd = "cmd /c `"`"$Root\run_service.cmd`"`""
-  & schtasks /delete /tn $task /f | Out-Null
+  & schtasks /delete /tn $task /f 2>$null | Out-Null
   $r = & schtasks /create /f /sc onlogon /ru SYSTEM /rl HIGHEST /delay 0000:30 /tn $task /tr $cmd 2>&1
   Write-Log "Tarea programada instalada: $task" "INFO"
 }
 
 function Start-Task {
   $task = "LibreriaPrintMonitor"
-  try { & schtasks /run /tn $task | Out-Null } catch {}
+  try { & schtasks /run /tn $task 2>$null | Out-Null } catch {}
 }
 
 function Stop-Task {
   $task = "LibreriaPrintMonitor"
-  try { & schtasks /end /tn $task | Out-Null } catch {}
+  try { & schtasks /end /tn $task 2>$null | Out-Null } catch {}
 }
 
 function Uninstall-All {
   param([string]$Root)
   Stop-Task
-  try { & schtasks /delete /tn "LibreriaPrintMonitor" /f | Out-Null } catch {}
+  try { & schtasks /delete /tn "LibreriaPrintMonitor" /f 2>$null | Out-Null } catch {}
   if ($script:KeepData) {
     Write-Log "KeepData habilitado: se conserva $Root" "WARN"
     return
