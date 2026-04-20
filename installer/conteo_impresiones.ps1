@@ -148,8 +148,19 @@ function Ensure-PythonRuntime {
   $getPip = Join-Path $Root "get-pip.py"
   Download-File -Url "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip
   Write-Log "Instalando pip..." "INFO"
-  $pipOut = & $py $getPip 2>&1
-  foreach ($l in $pipOut) { Write-Log $l "INFO" }
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
+    $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
+    $pipOut = & $py $getPip --no-warn-script-location 2>&1
+    foreach ($l in $pipOut) { Write-Log $l "INFO" }
+    if ($LASTEXITCODE -ne 0) {
+      throw "get-pip.py falló con código $LASTEXITCODE"
+    }
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
 
   return $py
 }
@@ -181,8 +192,19 @@ function Install-Dependencies {
   $req = Join-Path (Join-Path (Join-Path $Root "app") "print_service") "requirements.txt"
   if (-not (Test-Path $req)) { throw "No se encontró requirements.txt" }
   Write-Log "Instalando dependencias Python..." "INFO"
-  $pipOut = & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location -r $req 2>&1
-  foreach ($l in $pipOut) { Write-Log $l "INFO" }
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
+    $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
+    $pipOut = & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location -r $req 2>&1
+    foreach ($l in $pipOut) { Write-Log $l "INFO" }
+    if ($LASTEXITCODE -ne 0) {
+      throw "Instalación de dependencias falló con código $LASTEXITCODE"
+    }
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
 }
 
 function Write-RunScript {
