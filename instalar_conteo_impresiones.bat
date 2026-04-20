@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions DisableDelayedExpansion
 title Instalador - Conteo de Impresiones
 
 set "INSTALL_DIR=C:\LibreriaPrintMonitor"
@@ -23,18 +23,28 @@ if errorlevel 1 (
   exit /b 1
 )
 
+for /f "tokens=2 delims= " %%v in ('py --version 2^>nul') do set "PYVER=%%v"
+echo Python detectado: %PYVER%
+for /f "tokens=1,2 delims=." %%a in ("%PYVER%") do (
+  set "PYMAJ=%%a"
+  set "PYMIN=%%b"
+)
+if "%PYMAJ%"=="3" (
+  if not "%PYMIN%"=="" (
+    if %PYMIN% GEQ 13 (
+      echo [ERROR] Python %PYVER% no es compatible con pywin32/WMI actualmente.
+      echo Instala Python 3.12.x y vuelve a ejecutar este instalador.
+      pause
+      exit /b 1
+    )
+  )
+)
+
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 if not exist "%INSTALL_DIR%\print_service" mkdir "%INSTALL_DIR%\print_service"
 
 echo [1/4] Descargando archivos del servicio...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference='Stop';" ^
-  "$files=@('__init__.py','db.py','filters.py','monitor.py','exports.py','server.py','requirements.txt','README.md');" ^
-  "foreach($f in $files){" ^
-  "  $u='%BASE_RAW%/'+$f;" ^
-  "  $o='%INSTALL_DIR%\print_service\'+$f;" ^
-  "  Invoke-WebRequest -Uri $u -UseBasicParsing -OutFile $o;" ^
-  "}"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $installDir='%INSTALL_DIR%'; $baseRaw='%BASE_RAW%'; $outDir=Join-Path $installDir 'print_service'; $files=@('__init__.py','db.py','filters.py','monitor.py','exports.py','server.py','requirements.txt','README.md'); foreach($f in $files){ $u=($baseRaw + '/' + $f); $o=Join-Path $outDir $f; Invoke-WebRequest -Uri $u -UseBasicParsing -OutFile $o }"
 if errorlevel 1 (
   echo [ERROR] No se pudieron descargar archivos desde GitHub.
   pause
