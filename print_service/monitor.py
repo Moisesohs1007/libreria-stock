@@ -20,15 +20,45 @@ def safe_int(x, default=0):
     return default
 
 
-def choose_pages(total_pages, pages_printed, ok):
+def choose_pages(total_pages, pages_printed, copies, ok):
   tp = safe_int(total_pages, default=0)
   pp = safe_int(pages_printed, default=0)
-  pages = max(tp, pp)
+  c = safe_int(copies, default=1)
+  if c <= 0:
+    c = 1
+  base = max(tp, pp, 0)
+  scaled = 0
+  if tp > 0:
+    scaled = tp * c
+  elif pp > 0:
+    scaled = pp * c
+  pages = max(base, scaled)
   if pages > 0:
     return pages
   if ok:
     return 1
   return 0
+
+
+def read_copies(job_info, printer_info=None):
+  dev = None
+  try:
+    dev = job_info.get("pDevMode") if job_info else None
+  except Exception:
+    dev = None
+  if dev is None and printer_info is not None:
+    try:
+      dev = printer_info.get("pDevMode")
+    except Exception:
+      dev = None
+  try:
+    c = getattr(dev, "Copies", None)
+    if c is None:
+      return 1
+    c = int(c)
+    return c if c > 0 else 1
+  except Exception:
+    return 1
 
 
 def classify_print_type(job_info, printer_info=None):
@@ -214,7 +244,8 @@ class PrintMonitor:
           last_flags = flags
           total_pages = safe_int(job_info.get("TotalPages", None), default=0)
           pages_printed = safe_int(job_info.get("PagesPrinted", None), default=0)
-          pages = max(total_pages, pages_printed)
+          copies = read_copies(job_info, pinfo)
+          pages = choose_pages(total_pages, pages_printed, copies, ok=True)
           if pages > 0:
             last_pages = pages
           last_type = classify_print_type(job_info, pinfo)
@@ -234,7 +265,7 @@ class PrintMonitor:
         ok = is_success(last_flags, printer_state, last_error)
         completed_ts = now_tz_iso()
         from .db import update_print_job, insert_event
-        final_pages = choose_pages(last_pages, 0, ok)
+        final_pages = choose_pages(last_pages, last_pages, 1, ok)
         patch = {
           "pages": int(final_pages),
           "print_type": last_type,
