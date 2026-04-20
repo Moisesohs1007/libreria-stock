@@ -1434,10 +1434,25 @@ async function impUpdateVendorWidget() {
       try {
         const meta = await impFetchJson("/api/prints/meta");
         const users = meta?.users || [];
-        if (users.length === 1 && typeof users[0] === "string") {
-          const owner = users[0].split("@")[0].trim();
-          if (owner && owner !== candidate) {
-            r = await impFetchJson("/api/prints/my-summary", { user_id: owner });
+        const userStrings = users.filter(u => typeof u === "string").map(u => u.trim()).filter(Boolean);
+        if (userStrings.length) {
+          const candLower = candidate.toLowerCase();
+          let bestOwner = "";
+          for (const u of userStrings) {
+            const owner = u.split("@")[0].trim();
+            if (!owner) continue;
+            if (owner.toLowerCase() === candLower) { bestOwner = owner; break; }
+          }
+          if (!bestOwner) {
+            for (const u of userStrings) {
+              const owner = u.split("@")[0].trim();
+              if (!owner) continue;
+              if (owner.toLowerCase().includes(candLower) || candLower.includes(owner.toLowerCase())) { bestOwner = owner; break; }
+            }
+          }
+          if (!bestOwner) bestOwner = userStrings[0].split("@")[0].trim();
+          if (bestOwner && bestOwner !== candidate) {
+            r = await impFetchJson("/api/prints/my-summary", { user_id: bestOwner });
             t = r.totals || t;
           }
         }
@@ -1598,6 +1613,8 @@ window._impAfterLogin = function() {
   impLoadCfg();
   impConnectSocket();
   impUpdateVendorWidget();
+  clearInterval(window._impVendorTimer);
+  window._impVendorTimer = setInterval(() => { impUpdateVendorWidget().catch(() => {}); }, 30000);
 };
 
 impLoadCfg();
