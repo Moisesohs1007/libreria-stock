@@ -639,10 +639,33 @@ window.filtrarHistorial = function() {
 // =============================================
 // ESCÁNER (LÓGICA)
 // =============================================
-let bufferEscaner="", timerEscaner=null;
+let bufferEscaner = "";
+let timerEscaner = null;
+let lastScanAt = 0;
+const SCAN_IDLE_MS = 120;
+const SCAN_MIN_LEN = 3;
 
-async function procesarCodigo(codigo){
-  codigo=codigo.trim().replace(/[^a-zA-Z0-9\-]/g,"");
+function setScannerDot(ok, mode) {
+  const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
+  const dot = document.getElementById(id);
+  if (!dot) return;
+  if (!ok) {
+    dot.style.background = "#f87171";
+    return;
+  }
+  dot.style.background = mode === "bg" ? "#4ade80" : "#60a5fa";
+}
+
+function setBgBadge(visible) {
+  const id = rolActual === "vendedor" ? "bg-badge-v" : "bg-badge-a";
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = visible ? "flex" : "none";
+}
+
+async function procesarCodigo(codigo) {
+
+  codigo = codigo.trim().replace(/[^a-zA-Z0-9\-]/g, "");
   if(!codigo) return;
   mostrarMensaje("🔍 Escaneado: "+codigo,"ok");
   try {
@@ -658,18 +681,89 @@ async function procesarCodigo(codigo){
   } catch(e) { mostrarMensaje("❌ Error DB","error"); }
 }
 
-if(scannerInput){
+function finalizarEscaneo() {
+  const c = bufferEscaner;
+  bufferEscaner = "";
+  if (scannerInput) scannerInput.value = "";
+  if (timerEscaner) clearTimeout(timerEscaner);
+  timerEscaner = null;
+  if (c && c.length >= SCAN_MIN_LEN) procesarCodigo(c);
+}
+
+function alimentarEscaneo(ch) {
+  if (!ch) return;
+  bufferEscaner += ch;
+  lastScanAt = Date.now();
+  setScannerDot(true, "local");
+  if (timerEscaner) clearTimeout(timerEscaner);
+  timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
+}
+
+function shouldForceScannerFocus() {
+  if (!rolActual) return false;
+  if (document.querySelector(".modal-overlay.active")) return false;
+  const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
+  if (inLogin) return false;
+  if (rolActual === "vendedor") {
+    return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
+  }
+  return true;
+}
+
+if (scannerInput) {
   scannerInput.addEventListener("keydown", e => {
-    if(e.key==="Enter"){
-      const c=bufferEscaner; bufferEscaner=""; scannerInput.value="";
-      if(c) procesarCodigo(c);
-    } else if(e.key.length===1) {
-      bufferEscaner += e.key;
-      clearTimeout(timerEscaner);
-      timerEscaner = setTimeout(() => { bufferEscaner=""; scannerInput.value=""; }, 200);
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      finalizarEscaneo();
+      return;
+    }
+    if (e.key === "Escape") {
+      bufferEscaner = "";
+      scannerInput.value = "";
+      return;
+    }
+    if (e.key && e.key.length === 1) {
+      alimentarEscaneo(e.key);
+      return;
     }
   });
+
+  scannerInput.addEventListener("input", () => {
+    const v = (scannerInput.value || "").trim();
+    if (!v) return;
+    const cleaned = v.replace(/[^a-zA-Z0-9\-]/g, "");
+    if (cleaned !== v) scannerInput.value = cleaned;
+    if (cleaned.length >= SCAN_MIN_LEN) {
+      alimentarEscaneo("");
+      bufferEscaner = cleaned;
+      finalizarEscaneo();
+    }
+  });
+
+  scannerInput.addEventListener("blur", () => {
+    if (shouldForceScannerFocus()) setTimeout(() => { try { scannerInput.focus(); } catch {} }, 80);
+  });
 }
+
+document.addEventListener("keydown", e => {
+  if (!rolActual) return;
+  if (localStorage.getItem("bg_scanner_enabled") === "1") return;
+  if (!shouldForceScannerFocus()) return;
+  const ae = document.activeElement;
+  const isScanner = ae === scannerInput;
+  const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
+  if (isEditable && !isScanner) return;
+  if (e.key === "Enter" || e.key === "Tab") {
+    if (bufferEscaner) {
+      e.preventDefault();
+      finalizarEscaneo();
+    }
+    return;
+  }
+  if (e.key && e.key.length === 1) {
+    alimentarEscaneo(e.key);
+  }
+});
 
 // =============================================
 // RICOH MP5055 INTEGRACIÓN
@@ -1202,12 +1296,29 @@ async function _generarReporte(prefix) {
 window.generarReporteDeudas = function() { return _generarReporte("a"); };
 window.generarReporteDeudasV = function() { return _generarReporte("v"); };
 
-window.ayudaSeguridad = () => alert("Para activar el escáner, permite 'Contenido no seguro' en la configuración del sitio (icono candado).");
+window.ayudaSeguridad = () => {
+  const bg = localStorage.getItem("bg_scanner_enabled") === "1";
+  const msg =
+    "Escáner de códigos:\n\n" +
+    "1) Modo normal (web): funciona cuando esta pestaña está abierta.\n" +
+    "2) Modo fondo (recomendado): funciona aunque otra app esté activa.\n\n" +
+    "Para modo fondo:\n" +
+    "- Ejecuta escaner_fondo.py / instalador del escáner en la PC.\n" +
+    "- En Chrome: icono candado → Configuración del sitio → permitir 'Contenido no seguro'.\n\n" +
+    `Estado actual: ${bg ? "FONDO habilitado" : "FONDO deshabilitado"}\n\n` +
+    "¿Quieres alternarlo ahora?";
+  const ok = confirm(msg);
+  if (!ok) return;
+  if (bg) window.deshabilitarEscanerFondo();
+  else window.habilitarEscanerFondo();
+};
 
 // Foco automático
 setInterval(() => {
-  if(rolActual && !document.querySelector(".modal-overlay.active") && !["INPUT","SELECT","BUTTON"].includes(document.activeElement.tagName)) {
-    if(scannerInput) scannerInput.focus();
+  if (!scannerInput) return;
+  if (localStorage.getItem("bg_scanner_enabled") === "1") return;
+  if (shouldForceScannerFocus()) {
+    try { scannerInput.focus(); } catch {}
   }
 }, 1000);
 
@@ -1216,20 +1327,27 @@ setInterval(async () => {
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") return;
   try {
+    setBgBadge(true);
+    setScannerDot(true, "bg");
     const r = await fetch("http://localhost:7777/poll");
     const d = await r.json();
     if(d.codigo) procesarCodigo(d.codigo);
-  } catch(e) {}
+  } catch(e) {
+    setBgBadge(false);
+    setScannerDot(false);
+  }
 }, 500);
 
 window.habilitarEscanerFondo = function() {
   localStorage.setItem("bg_scanner_enabled", "1");
   mostrarMensaje("✅ Escáner de fondo habilitado (este equipo)", "ok");
+  setBgBadge(true);
 };
 
 window.deshabilitarEscanerFondo = function() {
   localStorage.setItem("bg_scanner_enabled", "0");
   mostrarMensaje("ℹ️ Escáner de fondo deshabilitado", "warning");
+  setBgBadge(false);
 };
 
 // Inicializar grupo Ventas al cargar
