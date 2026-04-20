@@ -1,5 +1,14 @@
 $ErrorActionPreference = "Stop"
 
+param(
+  [ValidateSet("install","update","uninstall","start","stop")][string]$Mode = "install",
+  [switch]$Silent,
+  [switch]$KeepData,
+  [switch]$NoElevate,
+  [int]$Port = 5056,
+  [string]$Token = ""
+)
+
 function Write-Log {
   param(
     [Parameter(Mandatory = $true)][string]$Message,
@@ -232,15 +241,6 @@ function Uninstall-All {
     Remove-Item -Recurse -Force $Root
   }
 }
-
-param(
-  [ValidateSet("install","update","uninstall","start","stop")][string]$Mode = "install",
-  [switch]$Silent,
-  [switch]$KeepData,
-  [switch]$NoElevate,
-  [int]$Port = 5056,
-  [string]$Token = ""
-)
 
 $script:Mode = $Mode
 $script:Silent = [bool]$Silent
