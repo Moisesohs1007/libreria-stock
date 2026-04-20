@@ -1,4 +1,4 @@
-from print_service.monitor import derive_error_code, is_success
+from print_service.monitor import choose_pages, derive_error_code, is_success
 
 
 def test_jam_detected_marks_failure():
@@ -13,4 +13,19 @@ def test_success_without_error():
   err = derive_error_code(None, printer_state)
   assert err is None
   assert is_success(None, printer_state, err) is True
+
+
+def test_choose_pages_prefers_reported_counts():
+  assert choose_pages(5, 0, True) == 5
+  assert choose_pages(0, 3, True) == 3
+  assert choose_pages(2, 7, True) == 7
+
+
+def test_choose_pages_unknown_pages_success_defaults_to_one():
+  assert choose_pages(0, 0, True) == 1
+  assert choose_pages(None, None, True) == 1
+
+
+def test_choose_pages_unknown_pages_failure_defaults_to_zero():
+  assert choose_pages(0, 0, False) == 0
 

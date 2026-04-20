@@ -20,6 +20,17 @@ def safe_int(x, default=0):
     return default
 
 
+def choose_pages(total_pages, pages_printed, ok):
+  tp = safe_int(total_pages, default=0)
+  pp = safe_int(pages_printed, default=0)
+  pages = max(tp, pp)
+  if pages > 0:
+    return pages
+  if ok:
+    return 1
+  return 0
+
+
 def classify_print_type(job_info, printer_info=None):
   dev = None
   try:
@@ -201,7 +212,9 @@ class PrintMonitor:
         if job_info:
           flags = safe_int(job_info.get("Status", None), default=None)
           last_flags = flags
-          pages = safe_int(job_info.get("TotalPages", None), default=0)
+          total_pages = safe_int(job_info.get("TotalPages", None), default=0)
+          pages_printed = safe_int(job_info.get("PagesPrinted", None), default=0)
+          pages = max(total_pages, pages_printed)
           if pages > 0:
             last_pages = pages
           last_type = classify_print_type(job_info, pinfo)
@@ -221,20 +234,15 @@ class PrintMonitor:
         ok = is_success(last_flags, printer_state, last_error)
         completed_ts = now_tz_iso()
         from .db import update_print_job, insert_event
+        final_pages = choose_pages(last_pages, 0, ok)
         patch = {
-          "pages": int(last_pages),
+          "pages": int(final_pages),
           "print_type": last_type,
           "ts_completed": completed_ts,
           "status": "completed" if ok else "failed",
           "error_code": last_error,
           "raw_status": last_flags,
         }
-
-        if patch["pages"] <= 0:
-          patch["pages"] = 0
-          if ok:
-            patch["status"] = "failed"
-            patch["error_code"] = patch["error_code"] or "UNKNOWN_PAGES"
 
         update_print_job(self.db_conn, print_job_id, patch)
         insert_event(self.db_conn, print_job_id, completed_ts, "JOB_FINALIZED", patch.get("error_code"))
