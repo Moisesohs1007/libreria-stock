@@ -125,18 +125,27 @@ def on_press(key):
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/poll")
+@app.route("/", strict_slashes=False)
+def root():
+    return jsonify({
+        "ok": True,
+        "service": "escaner_fondo",
+        "endpoints": ["/poll", "/status", "/health"],
+        "log": _LOG_PATH,
+    })
+
+@app.route("/poll", strict_slashes=False)
 def poll():
     with filtro.lock:
         res = filtro.ultimo_codigo
         filtro.ultimo_codigo = None
     return jsonify({"codigo": res})
 
-@app.route("/status")
+@app.route("/status", strict_slashes=False)
 def status():
     return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else ""})
 
-@app.route("/health")
+@app.route("/health", strict_slashes=False)
 def health():
     return jsonify({"ok": True, "log": _LOG_PATH})
 
@@ -148,5 +157,5 @@ if __name__ == "__main__":
     listener = keyboard.Listener(on_press=on_press, suppress=True)
     listener.start()
     
-    logging.info("INICIANDO_ESCANER_FONDO puerto=7777 log=%s", _LOG_PATH)
+    logging.info("INICIANDO_ESCANER_FONDO puerto=7777 script=%s cwd=%s log=%s", __file__, os.getcwd(), _LOG_PATH)
     app.run(host="127.0.0.1", port=7777, debug=False)
