@@ -8,9 +8,10 @@
  */
 
 import { db } from './firebase-config.js';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
-  increment, deleteDoc, Timestamp
+  increment, deleteDoc, Timestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // =============================================
@@ -232,6 +233,7 @@ function iniciarListeners() {
     try {
       const snap = await getDocs(productosRef);
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _rebuildProductoIndex();
       actualizarUIAdmin();
     } catch {
       mostrarMensaje("⚠️ No se pudieron cargar productos (red/firewall)", "warning");
@@ -243,6 +245,7 @@ function iniciarListeners() {
     productosRef,
     snap => {
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _rebuildProductoIndex();
       actualizarUIAdmin();
     },
     () => {
@@ -709,6 +712,23 @@ let lastScanAt = 0;
 const SCAN_IDLE_MS = 120;
 const SCAN_MIN_LEN = 3;
 
+let _productoIndex = new Map();
+function _scanDebug() { return localStorage.getItem("scan_debug") === "1"; }
+function _rebuildProductoIndex() {
+  const m = new Map();
+  for (const p of (todosLosProductos || [])) {
+    const base = p?.codigo;
+    const variants = buildScanVariants(base);
+    for (const v of variants) {
+      if (!m.has(v)) m.set(v, p);
+    }
+  }
+  _productoIndex = m;
+}
+
+const _scanTiming = { source: "", lastTs: 0, deltas: [] };
+function _resetScanTiming() { _scanTiming.source = ""; _scanTiming.lastTs = 0; _scanTiming.deltas = []; }
+
 function setScannerDot(ok, mode) {
   const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
   const dot = document.getElementById(id);
@@ -729,20 +749,66 @@ function setBgBadge(visible) {
 
 async function procesarCodigo(codigo) {
 
-  codigo = codigo.trim().replace(/[^a-zA-Z0-9\-]/g, "");
-  if(!codigo) return;
-  mostrarMensaje("🔍 Escaneado: "+codigo,"ok");
+  codigo = sanitizeScanCode(codigo);
+  if (!codigo) return;
+  if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
   try {
-    const snap = await getDocs(query(collection(db,"productos"), where("codigo","==",codigo)));
-    if(snap.empty){ mostrarMensaje("❌ No encontrado","error"); return; }
-    snap.forEach(async docSnap=>{
-      const p = docSnap.data();
-      if(p.stock <= 0){ mostrarMensaje("⚠️ Sin stock","warning"); return; }
-      await updateDoc(doc(db,"productos",docSnap.id),{stock:increment(-1)});
-      await addDoc(collection(db,"ventas"),{codigo:p.codigo,nombre:p.nombre,precio:p.precio,fecha:new Date()});
-      mostrarMensaje("✅ "+p.nombre,"ok");
+    const variantes = buildScanVariants(codigo);
+    let p = null;
+    for (const v of variantes) {
+      const hit = _productoIndex.get(v);
+      if (hit) { p = hit; break; }
+    }
+
+    if (!p) {
+      const productosCol = collection(db, "productos");
+      let docSnap = null;
+      for (const s of variantes) {
+        const snap = await getDocs(query(productosCol, where("codigo", "==", s)));
+        if (!snap.empty) { docSnap = snap.docs[0]; break; }
+        if (/^\d+$/.test(s)) {
+          const n = Number(s);
+          if (Number.isFinite(n)) {
+            const snapN = await getDocs(query(productosCol, where("codigo", "==", n)));
+            if (!snapN.empty) { docSnap = snapN.docs[0]; break; }
+          }
+        }
+      }
+      if (docSnap) p = { id: docSnap.id, ...docSnap.data() };
+    }
+
+    if (!p || !p.id) { mostrarMensaje("❌ No encontrado (código no registrado)", "error"); return; }
+
+    await runTransaction(db, async (tx) => {
+      const prodRef = doc(db, "productos", p.id);
+      const snap = await tx.get(prodRef);
+      if (!snap.exists()) throw new Error("NOT_FOUND");
+      const data = snap.data() || {};
+      const stock = Number(data.stock);
+      if (Number.isFinite(stock) && stock <= 0) {
+        const err = new Error("SIN_STOCK");
+        err.code = "SIN_STOCK";
+        throw err;
+      }
+      if (Number.isFinite(stock)) tx.update(prodRef, { stock: stock - 1 });
+      else tx.update(prodRef, { stock: increment(-1) });
+
+      const ventaRef = doc(collection(db, "ventas"));
+      tx.set(ventaRef, {
+        codigo: data.codigo ?? p.codigo ?? codigo,
+        nombre: data.nombre ?? p.nombre ?? "",
+        precio: data.precio ?? p.precio ?? 0,
+        fecha: new Date(),
+        vendedor: nombreVendedor || "Admin",
+      });
     });
-  } catch(e) { mostrarMensaje("❌ Error DB","error"); }
+
+    mostrarMensaje("✅ " + (p.nombre || "Venta registrada"), "ok");
+  } catch (e) {
+    if (e?.code === "SIN_STOCK" || e?.message === "SIN_STOCK") mostrarMensaje("⚠️ Sin stock", "warning");
+    else mostrarMensaje("❌ Error registrando venta", "error");
+    if (_scanDebug()) console.error("scan_error", e);
+  }
 }
 
 function finalizarEscaneo() {
@@ -751,18 +817,22 @@ function finalizarEscaneo() {
   if (scannerInput) scannerInput.value = "";
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = null;
-  if (!c || c.length < SCAN_MIN_LEN) return;
-  if (!isSalesContext()) {
-    mostrarMensaje("ℹ️ Escaneo detectado. Abre Ventas para registrar.", "warning");
-    return;
-  }
-  procesarCodigo(c);
+  const cleaned = sanitizeScanCode(c);
+  const fromScannerFocus = document.activeElement === scannerInput;
+  const likelyScan = fromScannerFocus || _scanTiming.source === "input" || _scanTiming.source === "bg" || isLikelyScanByTiming(_scanTiming.deltas);
+  _resetScanTiming();
+  if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
+  if (!likelyScan) return;
+  procesarCodigo(cleaned);
 }
 
-function alimentarEscaneo(ch) {
-  if (!ch) return;
+function alimentarEscaneo(ch, source) {
   bufferEscaner += ch;
-  lastScanAt = Date.now();
+  const now = Date.now();
+  if (!_scanTiming.source) _scanTiming.source = source || "doc";
+  if (_scanTiming.lastTs) _scanTiming.deltas.push(now - _scanTiming.lastTs);
+  _scanTiming.lastTs = now;
+  lastScanAt = now;
   setScannerDot(true, "local");
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
@@ -792,11 +862,12 @@ if (scannerInput) {
     }
     if (e.key === "Escape") {
       bufferEscaner = "";
+      _resetScanTiming();
       scannerInput.value = "";
       return;
     }
     if (e.key && e.key.length === 1) {
-      alimentarEscaneo(e.key);
+      alimentarEscaneo(e.key, "scanner");
       return;
     }
   });
@@ -804,11 +875,12 @@ if (scannerInput) {
   scannerInput.addEventListener("input", () => {
     const v = (scannerInput.value || "").trim();
     if (!v) return;
-    const cleaned = v.replace(/[^a-zA-Z0-9\-]/g, "");
+    const cleaned = sanitizeScanCode(v);
     if (cleaned !== v) scannerInput.value = cleaned;
-    if (cleaned.length >= SCAN_MIN_LEN) {
-      alimentarEscaneo("");
+    if (cleaned && cleaned.length >= SCAN_MIN_LEN) {
       bufferEscaner = cleaned;
+      _resetScanTiming();
+      _scanTiming.source = "input";
       finalizarEscaneo();
     }
   });
@@ -826,14 +898,14 @@ document.addEventListener("keydown", e => {
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
   if (isEditable && !isScanner) return;
   if (e.key === "Enter" || e.key === "Tab") {
-    if (bufferEscaner) {
+    if (bufferEscaner && isLikelyScanByTiming(_scanTiming.deltas)) {
       e.preventDefault();
       finalizarEscaneo();
     }
     return;
   }
   if (e.key && e.key.length === 1) {
-    alimentarEscaneo(e.key);
+    alimentarEscaneo(e.key, "doc");
   }
 });
 

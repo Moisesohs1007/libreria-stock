@@ -2,9 +2,21 @@ import sys
 import time
 import threading
 import os
+import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
 from pynput import keyboard
+
+# Log (UTF-8)
+_LOG_PATH = os.path.join(os.path.dirname(__file__), "escaner_auditoria.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(_LOG_PATH, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
 
 # =============================================================================
 # CONFIGURACIÓN — FILTRO TOTAL DE ESCÁNER
@@ -20,25 +32,41 @@ class EscanerFiltroTotal:
         self.lock = threading.Lock()
         self.timer_envio = None
         self.es_escaneo_activo = False
+        self._leaked = False
+        self._injecting = False
+        self._controller = keyboard.Controller()
 
     def reset(self):
         self.buffer = ""
         self.es_escaneo_activo = False
+        self._leaked = False
         if self.timer_envio:
             self.timer_envio.cancel()
             self.timer_envio = None
+
+    def _inject_backspace(self):
+        self._injecting = True
+        try:
+            self._controller.press(keyboard.Key.backspace)
+            self._controller.release(keyboard.Key.backspace)
+        finally:
+            self._injecting = False
 
     def enviar_a_web(self):
         with self.lock:
             codigo = "".join(c for c in self.buffer.strip() if c.isalnum() or c == '-')
             if len(codigo) >= 3:
                 self.ultimo_codigo = codigo
-                print(f"✅ ESCÁNER CAPTURADO: {codigo}")
+                logging.info("ESCANER_CAPTURADO: %s", codigo)
             else:
-                if codigo: print(f"❌ DESCARTADO (muy corto): {codigo}")
+                if codigo:
+                    logging.warning("DESCARTADO_CORTO: %s", codigo)
             self.reset()
 
     def procesar_tecla(self, key):
+        if self._injecting and key == keyboard.Key.backspace:
+            return True
+
         ahora = time.time()
         delta = ahora - self.ultimo_tiempo
         self.ultimo_tiempo = ahora
@@ -64,6 +92,8 @@ class EscanerFiltroTotal:
         if char:
             # 2. Si la tecla llega rápido o ya estamos en modo escaneo
             if delta < UMBRAL_HUMANO_MS or self.es_escaneo_activo:
+                if not self.es_escaneo_activo and self._leaked:
+                    self._inject_backspace()
                 self.es_escaneo_activo = True
                 self.buffer += char
                 
@@ -76,6 +106,7 @@ class EscanerFiltroTotal:
             else:
                 # 3. Es lento, podría ser la primera tecla de un escáner o un humano
                 self.buffer = char
+                self._leaked = True
                 return True # Deja pasar la primera tecla (si las siguientes son rápidas, el buffer se completará)
 
         return True
@@ -99,8 +130,11 @@ def poll():
 def status():
     return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else ""})
 
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "log": _LOG_PATH})
+
 if __name__ == "__main__":
-    import logging
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     
     # Iniciamos el listener con supresión obligatoria
@@ -108,6 +142,5 @@ if __name__ == "__main__":
     listener = keyboard.Listener(on_press=on_press, suppress=True)
     listener.start()
     
-    print(">>> FILTRO DE ESCÁNER TOTAL ACTIVO (Puerto 7777) <<<")
-    print(">>> Nota: Se recomienda ejecutar como ADMINISTRADOR. <<<")
+    logging.info("INICIANDO_ESCANER_FONDO puerto=7777 log=%s", _LOG_PATH)
     app.run(host="127.0.0.1", port=7777, debug=False)

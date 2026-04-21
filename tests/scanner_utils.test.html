@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scanner Utils Tests</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 20px; }
+      .ok { color: #16a34a; }
+      .bad { color: #dc2626; }
+      pre { background: #0b1020; color: #e5e7eb; padding: 12px; border-radius: 8px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>scanner_utils.js — tests</h1>
+    <div id="out">Ejecutando…</div>
+    <pre id="log"></pre>
+    <script type="module">
+      import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from "../scanner_utils.js";
+
+      const out = document.getElementById("out");
+      const log = document.getElementById("log");
+      const lines = [];
+      const ok = (msg) => lines.push("OK  " + msg);
+      const bad = (msg) => { throw new Error(msg); };
+      const eq = (a, b, msg) => {
+        if (a !== b) bad(`${msg} | esperado=${JSON.stringify(b)} real=${JSON.stringify(a)}`);
+      };
+      const has = (arr, v, msg) => {
+        if (!arr.includes(v)) bad(`${msg} | falta=${JSON.stringify(v)} en=${JSON.stringify(arr)}`);
+      };
+
+      try {
+        eq(sanitizeScanCode("  LIB-00123 \n"), "LIB-00123", "sanitize básico");
+        eq(sanitizeScanCode("A*B$C"), "ABC", "sanitize filtra símbolos");
+
+        const v = buildScanVariants("000Abc");
+        has(v, "000Abc", "variants base");
+        has(v, "000ABC", "variants upper");
+        has(v, "Abc", "variants sin ceros");
+        has(v, "ABC", "variants upper sin ceros");
+
+        eq(isLikelyScanByTiming([15, 18, 12, 20]), true, "timing rápido");
+        eq(isLikelyScanByTiming([140, 120, 95]), false, "timing humano");
+        eq(isLikelyScanByTiming([]), true, "timing vacío");
+
+        out.textContent = "✅ Todos los tests pasaron";
+        out.className = "ok";
+        lines.forEach(ok);
+      } catch (e) {
+        out.textContent = "❌ Falló";
+        out.className = "bad";
+        lines.push("ERR " + (e?.message || String(e)));
+      }
+
+      log.textContent = lines.join("\n");
+    </script>
+  </body>
+</html>
+
