@@ -139,8 +139,9 @@ function Ensure-Dependencies([string]$py) {
     if ($p1.ExitCode -ne 0) { throw "pip_install_failed_$($p1.ExitCode)" }
     Write-LogLine "OK dependencias instaladas."
   } catch {
-    Write-LogLine "ERROR instalando dependencias: $($_.Exception.Message)"
-    throw
+    Write-LogLine "WARN instalando dependencias: $($_.Exception.Message)"
+    Write-LogLine "Continuando instalación (si ya estaban instaladas, el servicio igual funcionará)."
+    return
   }
 }
 
