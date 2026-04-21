@@ -3,7 +3,7 @@ import time
 import threading
 import os
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from pynput import keyboard
 
@@ -27,6 +27,11 @@ SCAN_IDLE_S = 0.35
 LIB_MIN_LEN = 12
 MAX_ACCUM_S = 1.5
 LISTENER_SUPPRESS = False
+
+_EV_LOCK = threading.Lock()
+_EV_COND = threading.Condition(_EV_LOCK)
+_EV_SEQ = 0
+_EV_CODE = None
 
 class EscanerFiltroTotal:
     def __init__(self):
@@ -105,6 +110,11 @@ class EscanerFiltroTotal:
             if self._looks_like_scan(codigo) and len(codigo) >= 3:
                 self.ultimo_codigo = codigo
                 logging.info("ESCANER_CAPTURADO: %s", codigo)
+                global _EV_SEQ, _EV_CODE
+                with _EV_COND:
+                    _EV_SEQ += 1
+                    _EV_CODE = codigo
+                    _EV_COND.notify_all()
             else:
                 if codigo:
                     logging.warning("DESCARTADO_CORTO: %s", codigo)
@@ -176,7 +186,7 @@ def root():
     return jsonify({
         "ok": True,
         "service": "escaner_fondo",
-        "endpoints": ["/poll", "/status", "/health"],
+        "endpoints": ["/poll", "/status", "/health", "/stream"],
         "log": _LOG_PATH,
         "suppress": LISTENER_SUPPRESS,
     })
@@ -187,6 +197,25 @@ def poll():
         res = filtro.ultimo_codigo
         filtro.ultimo_codigo = None
     return jsonify({"codigo": res})
+
+@app.route("/stream", strict_slashes=False)
+def stream():
+    def gen():
+        last = 0
+        while True:
+            with _EV_COND:
+                if last == 0:
+                    last = _EV_SEQ
+                if _EV_SEQ == last:
+                    _EV_COND.wait(timeout=15.0)
+                if _EV_SEQ == last:
+                    yield ": keepalive\n\n"
+                    continue
+                last = _EV_SEQ
+                code = _EV_CODE
+            if code:
+                yield f"data: {code}\n\n"
+    return Response(stream_with_context(gen()), mimetype="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 @app.route("/status", strict_slashes=False)
 def status():

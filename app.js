@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421u';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421u';
+import { db } from './firebase-config.js?v=20260421v';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421v';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -245,6 +245,8 @@ function activarAdmin() {
   if (scannerInput) scannerInput.focus();
   iniciarListeners();
   _offlineFlush(true);
+  try { if (localStorage.getItem("bg_scanner_enabled") !== "0") localStorage.setItem("bg_scanner_enabled", "1"); } catch {}
+  try { _bgStartStream(); } catch {}
 }
 
 function activarVendedor(nombre) {
@@ -259,6 +261,8 @@ function activarVendedor(nombre) {
   iniciarListeners();
   if (window._impAfterLogin) window._impAfterLogin();
   _offlineFlush(true);
+  try { if (localStorage.getItem("bg_scanner_enabled") !== "0") localStorage.setItem("bg_scanner_enabled", "1"); } catch {}
+  try { _bgStartStream(); } catch {}
 }
 
 window.cerrarSesion = function() {
@@ -1181,7 +1185,9 @@ document.addEventListener("keydown", e => {
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
   if (e.key === "Enter" || e.key === "Tab") {
-    if (bufferEscaner && (_scanSteal.active || isLikelyScanByTiming(_scanTiming.deltas))) {
+    if (bufferEscaner && isLikelyScanByTiming(_scanTiming.deltas)) {
+      e.preventDefault();
+      e.stopPropagation();
       finalizarEscaneo();
     }
     return;
@@ -1795,16 +1801,63 @@ setInterval(() => {
 // Escáner de fondo
 let _bgFailCount = 0;
 let _bgInFlight = false;
-setInterval(async () => {
+let _bgStream = null;
+let _bgStreamBase = "";
+let _bgWarned = false;
+
+function _bgWarnOnce() {
+  if (_bgWarned) return;
+  _bgWarned = true;
+  mostrarMensaje("⚠️ FONDO no disponible. Activa 'Contenido no seguro' y verifica servicio 7777.", "warning");
+}
+
+function _bgStopStream() {
+  try { _bgStream?.close?.(); } catch {}
+  _bgStream = null;
+  _bgStreamBase = "";
+}
+
+function _bgStartStream() {
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") return;
+  const base = scanServiceBase();
+  if (_bgStream && _bgStreamBase === base) return;
+  _bgStopStream();
+  _bgStreamBase = base;
+  try {
+    const es = new EventSource(base + "/stream");
+    _bgStream = es;
+    setBgBadge(true);
+    setScannerDot(true, "bg");
+    es.onmessage = (ev) => {
+      const code = sanitizeScanCode(ev?.data || "");
+      if (!code) return;
+      procesarCodigo(code, { source: "bg" });
+    };
+    es.onerror = () => {
+      _bgFailCount += 1;
+      setBgBadge(false);
+      setScannerDot(false);
+      _bgStopStream();
+      _bgWarnOnce();
+    };
+  } catch {
+    _bgWarnOnce();
+  }
+}
+
+setInterval(async () => {
+  if (!rolActual) return;
+  if (localStorage.getItem("bg_scanner_enabled") !== "1") { _bgStopStream(); return; }
+  _bgStartStream();
+  if (_bgStream) return;
   if (_bgInFlight) return;
   _bgInFlight = true;
   try {
     setBgBadge(true);
     setScannerDot(true, "bg");
     const base = scanServiceBase();
-    const r = await fetch(base + "/poll", { signal: _timeoutSignal(1200) });
+    const r = await fetch(base + "/poll", { signal: _timeoutSignal(1500) });
     const d = await r.json();
     if (d.codigo) procesarCodigo(d.codigo, { source: "bg" });
     _bgFailCount = 0;
@@ -1812,18 +1865,11 @@ setInterval(async () => {
     if (e?.name !== "AbortError") _bgFailCount += 1;
     setBgBadge(false);
     setScannerDot(false);
-    if (_bgFailCount === 1) {
-      mostrarMensaje("⚠️ No se pudo acceder al escáner en fondo (bloqueo del navegador o servicio apagado).", "warning");
-    }
-    if (_bgFailCount >= 6) {
-      localStorage.setItem("bg_scanner_enabled", "0");
-      _bgFailCount = 0;
-      mostrarMensaje("⚠️ Escáner de fondo no disponible. Se activó modo normal.", "warning");
-    }
+    if (_bgFailCount >= 2) _bgWarnOnce();
   } finally {
     _bgInFlight = false;
   }
-}, 500);
+}, 900);
 
 window.habilitarEscanerFondo = async function() {
   try {
@@ -1834,6 +1880,7 @@ window.habilitarEscanerFondo = async function() {
     _bgFailCount = 0;
     mostrarMensaje("✅ Escáner de fondo habilitado (este equipo)", "ok");
     setBgBadge(true);
+    _bgStartStream();
   } catch {
     localStorage.setItem("bg_scanner_enabled", "0");
     setBgBadge(false);
