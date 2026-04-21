@@ -382,6 +382,7 @@ function iniciarListeners() {
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _rebuildProductoIndex();
       actualizarUIAdmin();
+      _drainPendingScans();
     },
     () => {
       cargarProductosOnce();
@@ -859,6 +860,25 @@ const SCAN_LIB_MIN_LEN = 12;
 
 let _productoIndex = new Map();
 function _scanDebug() { return localStorage.getItem("scan_debug") === "1"; }
+let _pendingScans = [];
+function _enqueuePendingScan(code, meta) {
+  const codigo = sanitizeScanCode(code);
+  if (!codigo) return;
+  const arr = Array.isArray(_pendingScans) ? _pendingScans : [];
+  const last = arr[arr.length - 1];
+  if (last && last.codigo === codigo && (Date.now() - (last.at || 0)) < 1000) return;
+  arr.push({ codigo, at: Date.now(), meta: meta || {} });
+  while (arr.length > 30) arr.shift();
+  _pendingScans = arr;
+}
+async function _drainPendingScans() {
+  const arr = Array.isArray(_pendingScans) ? _pendingScans : [];
+  if (!arr.length) return;
+  _pendingScans = [];
+  for (const it of arr) {
+    try { await procesarCodigo(it.codigo, it.meta || {}); } catch {}
+  }
+}
 function _rebuildProductoIndex() {
   const m = new Map();
   for (const p of (todosLosProductos || [])) {
@@ -943,6 +963,12 @@ async function procesarCodigo(codigo, meta) {
   const started = performance.now();
   codigo = sanitizeScanCode(codigo);
   if (!codigo) return false;
+  if (!meta?.offlineReplay && (!todosLosProductos || !todosLosProductos.length) && (_productoIndex?.size || 0) === 0 && typeof window._cargarProductosOnce === "function" && !meta?._retriedLoad) {
+    mostrarMensaje("⏳ Cargando productos... vuelve a escanear en 2s", "warning");
+    _enqueuePendingScan(codigo, { ...(meta || {}), _retriedLoad: true });
+    try { window._cargarProductosOnce(); } catch {}
+    return true;
+  }
   if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
   if (!meta?.offlineReplay && !navigator.onLine) {
     const ms = Math.round(performance.now() - started);
@@ -983,7 +1009,8 @@ async function procesarCodigo(codigo, meta) {
     if (!p || !p.id) {
       const ms = Math.round(performance.now() - started);
       _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "NO_ENCONTRADO" });
-      mostrarMensaje("❌ No encontrado: " + codigo, "error");
+      const count = Array.isArray(todosLosProductos) ? todosLosProductos.length : 0;
+      mostrarMensaje(`❌ No encontrado: ${codigo}${count ? ` (productos cargados: ${count})` : ""}`, "error");
       if (meta?.throwOnError) {
         const err = new Error("NO_ENCONTRADO");
         err.code = "NO_ENCONTRADO";
@@ -1764,8 +1791,9 @@ setInterval(() => {
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
   if (isEditable && !isScanner) return;
+  if (ae && ae !== document.body && !isScanner) return;
   try { scannerInput.focus(); } catch {}
-}, 1000);
+}, 2500);
 
 // Escáner de fondo
 let _bgFailCount = 0;
