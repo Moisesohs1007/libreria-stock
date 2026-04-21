@@ -55,13 +55,44 @@ Write-LogLine "Script=$PSCommandPath"
 $TaskName = "EscanerLibreria"
 $PyExe = $null
 
+function Install-EmergencyUnblock {
+  try {
+    $dst = "$InstallDir\DESBLOQUEAR_TECLADO_ESCANER.cmd"
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $dstDesktop = Join-Path $desktop "DESBLOQUEAR_TECLADO_ESCANER.cmd"
+    $content = @"
+@echo off
+title DESBLOQUEAR TECLADO (Escaner)
+echo.
+echo Deteniendo tarea EscanerLibreria...
+schtasks /end /tn "EscanerLibreria" >nul 2>nul
+echo.
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":7777 .*LISTENING"') do (
+  echo Matando PID %%a (puerto 7777)...
+  taskkill /F /PID %%a >nul 2>nul
+)
+echo.
+echo TECLADO RESTAURADO.
+echo.
+pause
+"@
+    Set-Content -LiteralPath $dst -Value $content -Encoding ASCII
+    Copy-Item -LiteralPath $dst -Destination $dstDesktop -Force -ErrorAction SilentlyContinue
+    Write-LogLine "Comando de emergencia creado: $dstDesktop"
+  } catch {
+    Write-LogLine "WARN no se pudo crear comando de emergencia: $($_.Exception.Message)"
+  }
+}
+
 function Resolve-Python {
+  $cmdPython = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+  $cmdPy = (Get-Command py.exe -ErrorAction SilentlyContinue).Source
   $candidates = @(
     "$InstallDir\python\pythonw.exe",
     "$InstallDir\python\python.exe",
-    (Get-Command python.exe -ErrorAction SilentlyContinue).Source,
-    (Get-Command py.exe -ErrorAction SilentlyContinue).Source
-  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    $cmdPy,
+    $cmdPython
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
   if ($candidates.Count -gt 0) { return $candidates[0] }
   return $null
 }
@@ -174,6 +205,7 @@ if ($Mode -eq "install") {
   Ensure-Admin
   Stop-Task
   Stop-Port 7777
+  Install-EmergencyUnblock
   Install-ScannerScript
   $PyExe = Resolve-Python
   if (-not $PyExe) {
@@ -194,6 +226,7 @@ if ($Mode -eq "install") {
 if ($Mode -eq "doctor") {
   Write-LogLine "PID puerto 7777: $(Get-PortPid 7777)"
   Write-LogLine "Python detectado: $(Resolve-Python)"
+  Install-EmergencyUnblock
   Test-Endpoints
   Write-LogLine "Fin doctor. Log: $global:LogPath"
   exit 0

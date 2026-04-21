@@ -26,6 +26,7 @@ TIEMPO_ENTRE_TECLAS_SCANNER = 0.05 # Los escáneres suelen enviar cada 10-30ms.
 SCAN_IDLE_S = 0.35
 LIB_MIN_LEN = 12
 MAX_ACCUM_S = 1.5
+LISTENER_SUPPRESS = True
 
 class EscanerFiltroTotal:
     def __init__(self):
@@ -175,6 +176,7 @@ def root():
         "service": "escaner_fondo",
         "endpoints": ["/poll", "/status", "/health"],
         "log": _LOG_PATH,
+        "suppress": LISTENER_SUPPRESS,
     })
 
 @app.route("/poll", strict_slashes=False)
@@ -186,17 +188,28 @@ def poll():
 
 @app.route("/status", strict_slashes=False)
 def status():
-    return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else ""})
+    return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else "", "suppress": LISTENER_SUPPRESS})
 
 @app.route("/health", strict_slashes=False)
 def health():
-    return jsonify({"ok": True, "log": _LOG_PATH})
+    return jsonify({"ok": True, "log": _LOG_PATH, "suppress": LISTENER_SUPPRESS})
 
 if __name__ == "__main__":
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     
-    listener = keyboard.Listener(on_press=on_press, suppress=True)
-    listener.start()
+    try:
+        LISTENER_SUPPRESS = True
+        listener = keyboard.Listener(on_press=on_press, suppress=True)
+        listener.start()
+    except Exception:
+        logging.exception("ERROR_INICIANDO_LISTENER suppress=true")
+        LISTENER_SUPPRESS = False
+        listener = keyboard.Listener(on_press=on_press, suppress=False)
+        listener.start()
     
-    logging.info("INICIANDO_ESCANER_FONDO puerto=7777 script=%s cwd=%s log=%s", __file__, os.getcwd(), _LOG_PATH)
-    app.run(host="127.0.0.1", port=7777, debug=False)
+    logging.info("INICIANDO_ESCANER_FONDO puerto=7777 script=%s cwd=%s log=%s suppress=%s", __file__, os.getcwd(), _LOG_PATH, LISTENER_SUPPRESS)
+    try:
+        app.run(host="127.0.0.1", port=7777, debug=False)
+    except Exception:
+        logging.exception("ERROR_FLASK_RUN")
+        raise
