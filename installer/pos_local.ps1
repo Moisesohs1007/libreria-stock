@@ -107,8 +107,8 @@ function Install-WebAssets {
   $base = "https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main"
   Download-File "$base/index.html" "$InstallDir\web\index.html"
   Download-File "$base/app.js" "$InstallDir\web\app.js"
-  Download-File "$base/style.css" "$InstallDir\web\style.css"
   Download-File "$base/firebase-config.js" "$InstallDir\web\firebase-config.js"
+  Download-File "$base/scanner_utils.js" "$InstallDir\web\scanner_utils.js"
 }
 
 function Install-ServerScript {

@@ -2014,34 +2014,117 @@ window.scanDoctorUI = async function() {
   };
 
   lines.length = 0;
-  add("=== Doctor Escáner (127.0.0.1:7777) ===");
+  const base = scanServiceBase();
+  add("=== Doctor Escáner ===");
   add(`Hora: ${new Date().toLocaleString("es-PE")}`);
   add(`Rol: ${rolActual || "—"} | Usuario: ${(nombreVendedor || (rolActual === "admin" ? "Admin" : "")) || "—"}`);
   add(`FONDO: ${localStorage.getItem("bg_scanner_enabled") === "1" ? "ON" : "OFF"}`);
   add(`Audit: ${localStorage.getItem("scan_audit") === "1" ? "ON" : "OFF"}`);
   add(`Protocol: ${location.protocol}`);
-  add(`ScanBase: ${scanServiceBase()}`);
+  add(`ScanBase: ${base}`);
   add("");
   try {
     const errs = JSON.parse(localStorage.getItem("runtime_errors") || "[]");
     if (errs.length) add("Runtime errors (últimos): " + JSON.stringify(errs.slice(-3)));
   } catch {}
   add("");
-  const s = await test("STATUS", "http://127.0.0.1:7777/status");
+  const s = await test("STATUS", base + "/status");
   add("");
-  const p = await test("POLL", "http://127.0.0.1:7777/poll");
+  const p = await test("POLL", base + "/poll");
   add("");
-  await test("HEALTH (opcional)", "http://127.0.0.1:7777/health");
+  await test("HEALTH (opcional)", base + "/health");
   add("");
 
   if (s.ok && p.ok) {
     add("RESULTADO: ✅ El servicio del escáner está activo en esta PC.");
-    if (location.protocol === "https:") add("Nota: si estás en https, debes permitir 'Contenido no seguro' para acceder a http://127.0.0.1:7777.");
-    add("Si no funciona en la web: candado del navegador → permitir 'Contenido no seguro' y habilitar FONDO en el indicador ESCÁNER.");
+    if (location.protocol === "https:" && base.startsWith("http://")) add("Nota: si estás en https, debes permitir 'Contenido no seguro' para acceder a " + base + ".");
+    add("Si no funciona en la web: habilita FONDO en el indicador ESCÁNER.");
   } else {
     add("RESULTADO: ❌ El servicio del escáner NO responde correctamente en esta PC.");
     add("Solución: descarga y ejecuta el instalador del escáner (setup_escaner_fondo.cmd) como Administrador.");
   }
+  show();
+};
+
+window.scanOneClick = async function() {
+  const out = document.getElementById("scan-doctor-out");
+  const lines = [];
+  const show = () => {
+    if (!out) return;
+    out.style.display = "block";
+    out.textContent = lines.join("\n");
+  };
+  const add = (s) => { lines.push(s); show(); };
+  const testJson = async (label, url) => {
+    add(`⏳ ${label}: ${url}`);
+    try {
+      const r = await fetch(url, { signal: _timeoutSignal(1800) });
+      const txt = await r.text();
+      add(`✅ ${label}: HTTP ${r.status}`);
+      if (txt) add(txt.slice(0, 600));
+      return { ok: r.ok, status: r.status, body: txt };
+    } catch (e) {
+      add(`❌ ${label}: ${e?.message || String(e)}`);
+      return { ok: false, status: 0, body: "" };
+    }
+  };
+  const download = (href) => {
+    try {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  lines.length = 0;
+  add("=== Arreglo de Escáner (1 clic) ===");
+  add(`Hora: ${new Date().toLocaleString("es-PE")}`);
+  add(`Protocol: ${location.protocol}`);
+  add("");
+
+  const candidates = [];
+  const base0 = scanServiceBase();
+  candidates.push(base0);
+  if (base0 !== "http://127.0.0.1:8787") candidates.push("http://127.0.0.1:8787");
+  if (base0 !== "http://127.0.0.1:7777") candidates.push("http://127.0.0.1:7777");
+
+  let okBase = "";
+  for (const b of candidates) {
+    add("");
+    add("Probando base: " + b);
+    const s = await testJson("STATUS", b + "/status");
+    const p = await testJson("POLL", b + "/poll");
+    if (s.ok && p.ok) { okBase = b; break; }
+  }
+
+  if (okBase) {
+    add("");
+    add("✅ OK: servicio detectado en " + okBase);
+    localStorage.setItem("scan_svc_base", okBase);
+    localStorage.setItem("bg_scanner_enabled", "1");
+    try { setBgBadge(true); } catch {}
+    try { setScannerDot(true, "bg"); } catch {}
+    add("✅ FONDO activado en este navegador.");
+    add("Siguiente: escanea en Word/WhatsApp (con la web abierta) y se debe registrar la venta.");
+    return;
+  }
+
+  add("");
+  add("❌ No se detectó ningún servicio local de escáner.");
+  add("Acción automática: descargando instalador recomendado (POS Local).");
+  const ok1 = download("installer/setup_pos_local.cmd");
+  add(ok1 ? "✅ Descarga iniciada: installer/setup_pos_local.cmd" : "❌ No se pudo iniciar descarga automática. Descarga manual: installer/setup_pos_local.cmd");
+  add("Ejecuta el .cmd como Administrador en esta PC y luego abre: http://127.0.0.1:8787/");
+  add("");
+  add("Alternativa (legacy 7777): instalador del escáner en fondo.");
+  const ok2 = download("installer/setup_escaner_fondo.cmd");
+  add(ok2 ? "✅ Descarga iniciada: installer/setup_escaner_fondo.cmd" : "❌ Descarga manual: installer/setup_escaner_fondo.cmd");
   show();
 };
 
