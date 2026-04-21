@@ -129,8 +129,14 @@ function Ensure-Dependencies([string]$py) {
 
   try {
     Write-LogLine "Instalando dependencias via pip..."
-    & $py -m pip install --upgrade pip | Out-Null
-    & $py -m pip install flask flask-cors pynput | Out-Null
+    $p0 = Start-Process -FilePath $py -ArgumentList @("-m","pip","install","--upgrade","pip") -NoNewWindow -Wait -PassThru -ErrorAction Stop
+    if ($p0.ExitCode -ne 0) {
+      Start-Process -FilePath $py -ArgumentList @("-m","ensurepip","--upgrade") -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue | Out-Null
+      $p0 = Start-Process -FilePath $py -ArgumentList @("-m","pip","install","--upgrade","pip") -NoNewWindow -Wait -PassThru -ErrorAction Stop
+      if ($p0.ExitCode -ne 0) { throw "pip_upgrade_failed_$($p0.ExitCode)" }
+    }
+    $p1 = Start-Process -FilePath $py -ArgumentList @("-m","pip","install","flask","flask-cors","pynput") -NoNewWindow -Wait -PassThru -ErrorAction Stop
+    if ($p1.ExitCode -ne 0) { throw "pip_install_failed_$($p1.ExitCode)" }
     Write-LogLine "OK dependencias instaladas."
   } catch {
     Write-LogLine "ERROR instalando dependencias: $($_.Exception.Message)"

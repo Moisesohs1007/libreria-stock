@@ -228,16 +228,9 @@ def health():
 if __name__ == "__main__":
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     
-    try:
-        want = os.environ.get("LIBRERIA_SCANNER_SUPPRESS", "0") == "1"
-        LISTENER_SUPPRESS = bool(want)
-        listener = keyboard.Listener(on_press=on_press, suppress=LISTENER_SUPPRESS)
-        listener.start()
-    except Exception:
-        logging.exception("ERROR_INICIANDO_LISTENER suppress=%s", LISTENER_SUPPRESS)
-        LISTENER_SUPPRESS = False
-        listener = keyboard.Listener(on_press=on_press, suppress=False)
-        listener.start()
+    LISTENER_SUPPRESS = False
+    listener = keyboard.Listener(on_press=on_press, suppress=False)
+    listener.start()
     
     logging.info("INICIANDO_ESCANER_FONDO puerto=7777 script=%s cwd=%s log=%s suppress=%s", __file__, os.getcwd(), _LOG_PATH, LISTENER_SUPPRESS)
     try:

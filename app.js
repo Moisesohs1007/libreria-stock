@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421v';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421v';
+import { db } from './firebase-config.js?v=20260421w';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421w';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -1789,6 +1789,7 @@ window.ayudaSeguridad = () => {
 // Foco automático
 setInterval(() => {
   if (!scannerInput) return;
+  if (localStorage.getItem("scan_autofocus") !== "1") return;
   if (!shouldForceScannerFocus()) return;
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
