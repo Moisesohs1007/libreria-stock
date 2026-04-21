@@ -751,7 +751,12 @@ function finalizarEscaneo() {
   if (scannerInput) scannerInput.value = "";
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = null;
-  if (c && c.length >= SCAN_MIN_LEN) procesarCodigo(c);
+  if (!c || c.length < SCAN_MIN_LEN) return;
+  if (!isSalesContext()) {
+    mostrarMensaje("ℹ️ Escaneo detectado. Abre Ventas para registrar.", "warning");
+    return;
+  }
+  procesarCodigo(c);
 }
 
 function alimentarEscaneo(ch) {
@@ -768,9 +773,13 @@ function shouldForceScannerFocus() {
   if (document.querySelector(".modal-overlay.active")) return false;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return false;
-  if (rolActual === "vendedor") {
-    return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
-  }
+  if (rolActual === "vendedor") return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
+  return document.getElementById("tab-ventas")?.classList?.contains("active") === true;
+}
+
+function isSalesContext() {
+  if (!rolActual) return false;
+  if (rolActual === "vendedor") return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
   return document.getElementById("tab-ventas")?.classList?.contains("active") === true;
 }
 
@@ -812,7 +821,6 @@ if (scannerInput) {
 document.addEventListener("keydown", e => {
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") === "1") return;
-  if (!shouldForceScannerFocus()) return;
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
@@ -1369,6 +1377,7 @@ window.ayudaSeguridad = () => {
     "Para modo fondo:\n" +
     "- Ejecuta escaner_fondo.py / instalador del escáner en la PC.\n" +
     "- En Chrome: icono candado → Configuración del sitio → permitir 'Contenido no seguro'.\n\n" +
+    "Nota: para registrar ventas por escaneo, entra a la pestaña Ventas.\n\n" +
     `Estado actual: ${bg ? "FONDO habilitado" : "FONDO deshabilitado"}\n\n` +
     "¿Quieres alternarlo ahora?";
   const ok = confirm(msg);
