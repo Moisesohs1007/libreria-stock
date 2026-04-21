@@ -209,6 +209,9 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   if (seccion) seccion.textContent = titulo;
   if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
+  if (tabId === "tab-etiquetas" && (!todosLosProductos || !todosLosProductos.length) && typeof window._cargarProductosOnce === "function") {
+    window._cargarProductosOnce();
+  }
 };
 
 window.cerrarModal = function(id) {
@@ -224,10 +227,28 @@ function iniciarListeners() {
   if (listenersIniciados) return;
   listenersIniciados = true;
 
-  onSnapshot(collection(db,"productos"), snap => {
-    todosLosProductos = snap.docs.map(d => ({id:d.id,...d.data()}));
-    actualizarUIAdmin();
-  });
+  const productosRef = collection(db, "productos");
+  const cargarProductosOnce = async () => {
+    try {
+      const snap = await getDocs(productosRef);
+      todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      actualizarUIAdmin();
+    } catch {
+      mostrarMensaje("⚠️ No se pudieron cargar productos (red/firewall)", "warning");
+    }
+  };
+  window._cargarProductosOnce = cargarProductosOnce;
+
+  onSnapshot(
+    productosRef,
+    snap => {
+      todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      actualizarUIAdmin();
+    },
+    () => {
+      cargarProductosOnce();
+    }
+  );
 
   onSnapshot(collection(db,"ventas"), snap => {
     todasLasVentas = snap.docs.map(d => d.data());

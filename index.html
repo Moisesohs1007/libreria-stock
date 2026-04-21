@@ -501,6 +501,7 @@
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
           <button onclick="generarEtiquetas()" class="btn btn-primary">Generar vista previa</button>
           <button onclick="imprimirEtiquetas()" class="btn btn-print">Imprimir</button>
+          <button onclick="window._cargarProductosOnce && window._cargarProductosOnce()" class="btn" style="background:#eee;">Recargar productos</button>
         </div>
         <div id="preview-etiquetas" style="background:#f0f0f0;padding:10px;border:2px dashed #ccc;min-height:60px;display:grid;gap:4px;"></div>
       </div>
@@ -1008,4 +1009,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260421'></script></body></html>
+<script type='module' src='app.js?v=20260421b'></script></body></html>
