@@ -1842,6 +1842,50 @@ window.impMostrarNotaInstalador = function() {
   mostrarMensaje("Descarga completada. Ejecuta el .bat como Administrador en la PC de la impresora.", "info");
 };
 
+window.scanDoctorUI = async function() {
+  const out = document.getElementById("scan-doctor-out");
+  const lines = [];
+  const show = () => {
+    if (!out) return;
+    out.style.display = "block";
+    out.textContent = lines.join("\n");
+  };
+  const add = (s) => { lines.push(s); show(); };
+  const test = async (label, url) => {
+    add(`⏳ ${label}: ${url}`);
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(1800) });
+      const txt = await r.text();
+      add(`✅ ${label}: HTTP ${r.status}`);
+      if (txt) add(txt.slice(0, 600));
+      return { ok: r.ok, status: r.status, body: txt };
+    } catch (e) {
+      add(`❌ ${label}: ${e?.message || String(e)}`);
+      return { ok: false, status: 0, body: "" };
+    }
+  };
+
+  lines.length = 0;
+  add("=== Doctor Escáner (localhost:7777) ===");
+  add(`Hora: ${new Date().toLocaleString("es-PE")}`);
+  add("");
+  const s = await test("STATUS", "http://127.0.0.1:7777/status");
+  add("");
+  const p = await test("POLL", "http://127.0.0.1:7777/poll");
+  add("");
+  await test("HEALTH (opcional)", "http://127.0.0.1:7777/health");
+  add("");
+
+  if (s.ok && p.ok) {
+    add("RESULTADO: ✅ El servicio del escáner está activo en esta PC.");
+    add("Si no funciona en la web, revisa: candado del navegador → permitir 'Contenido no seguro' y habilitar FONDO en el indicador ESCÁNER.");
+  } else {
+    add("RESULTADO: ❌ El servicio del escáner NO responde correctamente en esta PC.");
+    add("Solución: descarga y ejecuta el instalador del escáner (setup_escaner_fondo.cmd) como Administrador.");
+  }
+  show();
+};
+
 window.impGuardarConfig = function() {
   impSaveCfg();
   impConnectSocket();

@@ -561,6 +561,21 @@
           Descarga y ejecuta estos .cmd/.ps1 en la PC donde está conectada la impresora. Se pedirá UAC (Administrador). Logs en C:\LibreriaPrintMonitor\logs.
         </div>
       </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">Instalación — Escáner en fondo (Ventas por escaneo fuera del navegador)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <a href="installer/setup_escaner_fondo.cmd" download class="btn btn-primary">Descargar e instalar escáner (recomendado)</a>
+          <a href="installer/doctor_escaner_fondo.cmd" download class="btn btn-info">Descargar doctor (diagnóstico)</a>
+          <a href="installer/iniciar_escaner_fondo.cmd" download class="btn" style="background:#eee;">Descargar iniciar</a>
+          <a href="installer/detener_escaner_fondo.cmd" download class="btn btn-danger">Descargar detener</a>
+          <button onclick="scanDoctorUI()" class="btn" style="background:#111827;color:#fff;">Probar conexión (7777)</button>
+        </div>
+        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
+          Esto instala/actualiza el servicio local del escáner en C:\LibreriaScanner y crea la tarea programada "EscanerLibreria".
+        </div>
+        <div id="scan-doctor-out" style="margin-top:10px;background:#0b1020;color:#e5e7eb;padding:10px;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;white-space:pre;overflow:auto;display:none;"></div>
+      </div>
     </div>
 
 
@@ -1009,4 +1024,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260421g'></script></body></html>
+<script type='module' src='app.js?v=20260421h'></script></body></html>
