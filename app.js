@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js';
+import { db } from './firebase-config.js?v=20260421u';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421u';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -1152,23 +1152,20 @@ if (scannerInput) {
       scannerInput.value = "";
       return;
     }
-    if (e.key && e.key.length === 1) {
-      alimentarEscaneo(e.key, "scanner");
-      return;
-    }
+    if (e.key && e.key.length === 1) return;
   });
 
   scannerInput.addEventListener("input", () => {
-    const v = (scannerInput.value || "").trim();
-    if (!v) return;
+    const v = String(scannerInput.value || "");
     const cleaned = sanitizeScanCode(v);
     if (cleaned !== v) scannerInput.value = cleaned;
-    if (cleaned && cleaned.length >= SCAN_MIN_LEN) {
-      bufferEscaner = cleaned;
-      _resetScanTiming();
-      _scanTiming.source = "input";
-      finalizarEscaneo();
-    }
+    if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
+    bufferEscaner = cleaned;
+    _resetScanTiming();
+    _scanTiming.source = "input";
+    lastScanAt = Date.now();
+    if (timerEscaner) clearTimeout(timerEscaner);
+    timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
   });
 
   scannerInput.addEventListener("blur", () => {
