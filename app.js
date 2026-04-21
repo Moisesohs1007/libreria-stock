@@ -784,6 +784,8 @@ function _removeTypedFromTarget() {
   if (!t || !typed) return;
   const tag = (t.tagName || "").toUpperCase();
   if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  const type = String(t.getAttribute?.("type") || t.type || "").toLowerCase();
+  if (type === "password") return;
   const v = String(t.value || "");
   if (v.endsWith(typed)) t.value = v.slice(0, -typed.length);
 }
@@ -1043,6 +1045,8 @@ if (scannerInput) {
 
 document.addEventListener("keydown", e => {
   if (!rolActual) return;
+  const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
+  if (inLogin) return;
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
@@ -1055,6 +1059,8 @@ document.addEventListener("keydown", e => {
   }
   if (e.key && e.key.length === 1) {
     if (isEditable && !isScanner) {
+      const type = String(ae?.getAttribute?.("type") || ae?.type || "").toLowerCase();
+      if (type === "password" || String(ae?.id || "").startsWith("login-")) return;
       const now = Date.now();
       if (_scanTiming.lastTs) _scanTiming.deltas.push(now - _scanTiming.lastTs);
       _scanTiming.lastTs = now;
@@ -1085,10 +1091,14 @@ document.addEventListener("keydown", e => {
 
 document.addEventListener("input", e => {
   if (!rolActual) return;
+  const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
+  if (inLogin) return;
   const t = e.target;
   if (!t || t === scannerInput) return;
   const tag = (t.tagName || "").toUpperCase();
   if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  const type = String(t.getAttribute?.("type") || t.type || "").toLowerCase();
+  if (type === "password" || String(t.id || "").startsWith("login-")) return;
   const cur = String(t.value || "");
   const prev = _scanInputPrev.get(t) ?? "";
   _scanInputPrev.set(t, cur);
