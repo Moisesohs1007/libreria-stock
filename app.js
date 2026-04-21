@@ -41,6 +41,11 @@ function _timeoutSignal(ms) {
   return c.signal;
 }
 
+function _toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // =============================================
 // GESTIÓN DE SESIÓN
 // =============================================
@@ -261,7 +266,14 @@ function iniciarListeners() {
   );
 
   onSnapshot(collection(db,"ventas"), snap => {
-    todasLasVentas = snap.docs.map(d => d.data());
+    todasLasVentas = snap.docs.map(d => {
+      const x = d.data() || {};
+      const cantidad = _toNum(x.cantidad) || 1;
+      const unit = _toNum(x.precio_unitario) || _toNum(x.precio);
+      const total = _toNum(x.total) || (_toNum(x.precio) || (unit * cantidad));
+      const precioCompat = total || _toNum(x.precio) || (unit * cantidad);
+      return { ...x, cantidad, precio_unitario: unit || _toNum(x.precio_unitario), total, precio: precioCompat };
+    });
     actualizarUIVentas();
   });
 
@@ -652,7 +664,8 @@ window.exportarHistorialExcel = function() {
   if (hasta) { const h = new Date(hasta); h.setHours(23, 59, 59, 999); f = f.filter(v => { const t = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha); return t <= h; }); }
   const datos = f.map(v => {
     const ft = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
-    return { Fecha: ft.toLocaleDateString("es-PE"), Hora: ft.toLocaleTimeString("es-PE"), Producto: v.nombre, Precio: v.precio, Código: v.codigo || "" };
+    const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario)*(_toNum(v.cantidad)||1));
+    return { Fecha: ft.toLocaleDateString("es-PE"), Hora: ft.toLocaleTimeString("es-PE"), Producto: v.nombre, Precio: monto, Código: v.codigo || "" };
   });
   const ws = XLSX.utils.json_to_sheet(datos);
   const wb = XLSX.utils.book_new();
@@ -671,7 +684,7 @@ function actualizarUIVentas() {
     const f=v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
     return f >= hoyIni;
   });
-  const totalHoy = ventasHoy.reduce((s,v)=>s+(v.precio||0),0);
+  const totalHoy = ventasHoy.reduce((s,v)=>s+(_toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario)*(_toNum(v.cantidad)||1))),0);
 
   const svh = document.getElementById("stat-ventas-hoy");
   const sth = document.getElementById("stat-total-hoy");
@@ -697,7 +710,8 @@ function renderizarHistorial(ventas) {
   lista.innerHTML = ord.map(v=>{
     const f=v.fecha?.toDate?v.fecha.toDate():new Date(v.fecha);
     const dt=f.toLocaleDateString("es-PE")+" "+f.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
-    return `<div class="hist-row"><span>${dt}</span><span style="font-weight:600;">${v.nombre}</span><span style="color:var(--green);font-weight:700;">S/ ${parseFloat(v.precio).toFixed(2)}</span></div>`;
+    const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario)*(_toNum(v.cantidad)||1));
+    return `<div class="hist-row"><span>${dt}</span><span style="font-weight:600;">${v.nombre}</span><span style="color:var(--green);font-weight:700;">S/ ${monto.toFixed(2)}</span></div>`;
   }).join("");
 }
 
@@ -747,6 +761,16 @@ function _removeTypedFromTarget() {
   if (v.endsWith(typed)) t.value = v.slice(0, -typed.length);
 }
 
+const _scanInputPrev = new WeakMap();
+function _looksLikeScanText(cleaned) {
+  if (!cleaned) return false;
+  if (/^LIB-[0-9A-Z\-]{4,}$/i.test(cleaned)) return true;
+  if (/^\d{6,}$/.test(cleaned)) return true;
+  const digits = (cleaned.match(/\d/g) || []).length;
+  if (digits >= 4 && cleaned.length >= 6) return true;
+  return false;
+}
+
 const _scanAudit = { max: 120 };
 function _scanAuditEnabled() { return localStorage.getItem("scan_audit") === "1"; }
 function _scanAuditPush(e) {
@@ -761,7 +785,7 @@ function _scanAuditPush(e) {
 }
 
 const _scanDedupe = { code: "", at: 0 };
-const SCAN_DEDUPE_MS = 450;
+const SCAN_DEDUPE_MS = 180;
 
 function setScannerDot(ok, mode) {
   const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
@@ -836,12 +860,14 @@ async function procesarCodigo(codigo, meta) {
       const ventaRef = doc(collection(db, "ventas"));
       const cant = 1;
       const unit = Number(data.precio ?? p.precio ?? 0) || 0;
+      const total = unit * cant;
       tx.set(ventaRef, {
         codigo: data.codigo ?? p.codigo ?? codigo,
         nombre: data.nombre ?? p.nombre ?? "",
         cantidad: cant,
         precio_unitario: unit,
-        total: unit * cant,
+        total,
+        precio: total,
         fecha: new Date(),
         vendedor: nombreVendedor || "Admin",
         rol: rolActual || "",
@@ -972,7 +998,9 @@ document.addEventListener("keydown", e => {
       _scanSteal.target = ae;
       _scanSteal.typed += e.key;
 
-      if (!_scanSteal.active && bufferEscaner.length >= 3 && isLikelyScanByTiming(_scanTiming.deltas)) {
+      const avgOk = isLikelyScanByTiming(_scanTiming.deltas) || (_scanTiming.deltas.length >= 2 && (_scanTiming.deltas.reduce((a,b)=>a+b,0)/_scanTiming.deltas.length) <= 160);
+      const lookOk = _looksLikeScanText(sanitizeScanCode(bufferEscaner));
+      if (!_scanSteal.active && bufferEscaner.length >= 3 && avgOk && lookOk) {
         _scanSteal.active = true;
         _removeTypedFromTarget();
       }
@@ -986,6 +1014,29 @@ document.addEventListener("keydown", e => {
     alimentarEscaneo(e.key, "doc");
   }
 });
+
+document.addEventListener("input", e => {
+  if (!rolActual) return;
+  const t = e.target;
+  if (!t || t === scannerInput) return;
+  const tag = (t.tagName || "").toUpperCase();
+  if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  const cur = String(t.value || "");
+  const prev = _scanInputPrev.get(t) ?? "";
+  _scanInputPrev.set(t, cur);
+  if (!cur) return;
+  let appended = cur.startsWith(prev) ? cur.slice(prev.length) : cur;
+  appended = String(appended || "");
+  const cleaned = sanitizeScanCode(appended);
+  if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
+  if (!_looksLikeScanText(cleaned)) return;
+  if (cur.startsWith(prev)) t.value = prev;
+  else t.value = "";
+  bufferEscaner = cleaned;
+  _resetScanTiming();
+  _scanTiming.source = "input";
+  finalizarEscaneo();
+}, true);
 
 // =============================================
 // RICOH MP5055 INTEGRACIÓN
@@ -1549,18 +1600,21 @@ setInterval(() => {
 
 // Escáner de fondo
 let _bgFailCount = 0;
+let _bgInFlight = false;
 setInterval(async () => {
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") return;
+  if (_bgInFlight) return;
+  _bgInFlight = true;
   try {
     setBgBadge(true);
     setScannerDot(true, "bg");
-    const r = await fetch("http://127.0.0.1:7777/poll", { signal: _timeoutSignal(1800) });
+    const r = await fetch("http://127.0.0.1:7777/poll", { signal: _timeoutSignal(1200) });
     const d = await r.json();
     if (d.codigo) procesarCodigo(d.codigo, { source: "bg" });
     _bgFailCount = 0;
   } catch(e) {
-    _bgFailCount += 1;
+    if (e?.name !== "AbortError") _bgFailCount += 1;
     setBgBadge(false);
     setScannerDot(false);
     if (_bgFailCount === 1) {
@@ -1571,6 +1625,8 @@ setInterval(async () => {
       _bgFailCount = 0;
       mostrarMensaje("⚠️ Escáner de fondo no disponible. Se activó modo normal.", "warning");
     }
+  } finally {
+    _bgInFlight = false;
   }
 }, 500);
 
