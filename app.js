@@ -728,6 +728,17 @@ function _rebuildProductoIndex() {
 
 const _scanTiming = { source: "", lastTs: 0, deltas: [] };
 function _resetScanTiming() { _scanTiming.source = ""; _scanTiming.lastTs = 0; _scanTiming.deltas = []; }
+const _scanSteal = { active: false, target: null, typed: "" };
+function _resetScanSteal() { _scanSteal.active = false; _scanSteal.target = null; _scanSteal.typed = ""; }
+function _removeTypedFromTarget() {
+  const t = _scanSteal.target;
+  const typed = _scanSteal.typed;
+  if (!t || !typed) return;
+  const tag = (t.tagName || "").toUpperCase();
+  if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  const v = String(t.value || "");
+  if (v.endsWith(typed)) t.value = v.slice(0, -typed.length);
+}
 
 function setScannerDot(ok, mode) {
   const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
@@ -754,6 +765,7 @@ async function procesarCodigo(codigo) {
   if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
   try {
     const variantes = buildScanVariants(codigo);
+    if (_scanDebug()) console.log("scan_variantes", codigo, variantes, { idx: _productoIndex.size });
     let p = null;
     for (const v of variantes) {
       const hit = _productoIndex.get(v);
@@ -821,6 +833,8 @@ function finalizarEscaneo() {
   const fromScannerFocus = document.activeElement === scannerInput;
   const likelyScan = fromScannerFocus || _scanTiming.source === "input" || _scanTiming.source === "bg" || isLikelyScanByTiming(_scanTiming.deltas);
   _resetScanTiming();
+  if (_scanSteal.active) _removeTypedFromTarget();
+  _resetScanSteal();
   if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
   if (!likelyScan) return;
   procesarCodigo(cleaned);
@@ -896,15 +910,37 @@ document.addEventListener("keydown", e => {
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
-  if (isEditable && !isScanner) return;
   if (e.key === "Enter" || e.key === "Tab") {
-    if (bufferEscaner && isLikelyScanByTiming(_scanTiming.deltas)) {
+    if (bufferEscaner && (_scanSteal.active || isLikelyScanByTiming(_scanTiming.deltas))) {
       e.preventDefault();
       finalizarEscaneo();
     }
     return;
   }
   if (e.key && e.key.length === 1) {
+    if (isEditable && !isScanner) {
+      const now = Date.now();
+      if (_scanTiming.lastTs) _scanTiming.deltas.push(now - _scanTiming.lastTs);
+      _scanTiming.lastTs = now;
+      _scanTiming.source = "doc";
+      bufferEscaner += e.key;
+      if (timerEscaner) clearTimeout(timerEscaner);
+      timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
+
+      _scanSteal.target = ae;
+      _scanSteal.typed += e.key;
+
+      if (!_scanSteal.active && bufferEscaner.length >= 3 && isLikelyScanByTiming(_scanTiming.deltas)) {
+        _scanSteal.active = true;
+        _removeTypedFromTarget();
+      }
+      if (_scanSteal.active) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+
     alimentarEscaneo(e.key, "doc");
   }
 });

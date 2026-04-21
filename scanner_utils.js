@@ -1,5 +1,9 @@
 export function sanitizeScanCode(raw) {
-  return String(raw || "").trim().replace(/[^0-9a-zA-Z-]/g, "");
+  let s = String(raw || "").trim().replace(/[^0-9a-zA-Z-]/g, "");
+  const u = s.toUpperCase();
+  const i = u.indexOf("LIB-");
+  if (i > 0 && i <= 6) s = s.slice(i);
+  return s;
 }
 
 export function buildScanVariants(raw) {
