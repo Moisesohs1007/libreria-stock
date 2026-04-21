@@ -33,6 +33,8 @@ export function buildScanVariants(raw) {
   if (digitsAll && digitsAll.length >= 6) {
     push(digitsAll);
     push(digitsAll.replace(/^0+/, ""));
+    push("LIB-" + digitsAll);
+    push("LIB-" + digitsAll.replace(/^0+/, ""));
   }
   return out;
 }
