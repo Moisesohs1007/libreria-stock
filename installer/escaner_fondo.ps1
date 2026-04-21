@@ -31,11 +31,11 @@ function Get-PortPid([int]$port) {
 }
 
 function Stop-Port([int]$port) {
-  $pid = Get-PortPid $port
-  if (-not $pid) { return }
+  $procId = Get-PortPid $port
+  if (-not $procId) { return }
   try {
-    Write-LogLine "Deteniendo proceso en puerto $port (PID=$pid)"
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    Write-LogLine "Deteniendo proceso en puerto $port (PID=$procId)"
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
   } catch {}
 }
 

@@ -756,8 +756,9 @@ window.filtrarHistorial = function() {
 let bufferEscaner = "";
 let timerEscaner = null;
 let lastScanAt = 0;
-const SCAN_IDLE_MS = 120;
+const SCAN_IDLE_MS = 350;
 const SCAN_MIN_LEN = 3;
+const SCAN_LIB_MIN_LEN = 12;
 
 let _productoIndex = new Map();
 function _scanDebug() { return localStorage.getItem("scan_debug") === "1"; }
@@ -790,10 +791,16 @@ function _removeTypedFromTarget() {
 const _scanInputPrev = new WeakMap();
 function _looksLikeScanText(cleaned) {
   if (!cleaned) return false;
-  if (/^LIB-[0-9A-Z\-]{4,}$/i.test(cleaned)) return true;
+  if (/^LIB-[0-9A-Z\-]{8,}$/i.test(cleaned)) return true;
   if (/^\d{6,}$/.test(cleaned)) return true;
   const digits = (cleaned.match(/\d/g) || []).length;
   if (digits >= 4 && cleaned.length >= 6) return true;
+  return false;
+}
+
+function _scanLooksIncomplete(cleaned) {
+  const u = String(cleaned || "").toUpperCase();
+  if (u.startsWith("LIB-") && u.length < SCAN_LIB_MIN_LEN) return true;
   return false;
 }
 
@@ -931,18 +938,42 @@ async function procesarCodigo(codigo, meta) {
 
 function finalizarEscaneo() {
   const c = bufferEscaner;
+  const cleaned = sanitizeScanCode(c);
+  const fromScannerFocus = document.activeElement === scannerInput;
+  const likelyScan = fromScannerFocus || _scanTiming.source === "input" || _scanTiming.source === "bg" || isLikelyScanByTiming(_scanTiming.deltas);
+  if (!cleaned || cleaned.length < SCAN_MIN_LEN) {
+    bufferEscaner = "";
+    if (scannerInput) scannerInput.value = "";
+    if (timerEscaner) clearTimeout(timerEscaner);
+    timerEscaner = null;
+    _resetScanTiming();
+    if (_scanSteal.active) _removeTypedFromTarget();
+    _resetScanSteal();
+    return;
+  }
+  if (!likelyScan) {
+    bufferEscaner = "";
+    if (scannerInput) scannerInput.value = "";
+    if (timerEscaner) clearTimeout(timerEscaner);
+    timerEscaner = null;
+    _resetScanTiming();
+    if (_scanSteal.active) _removeTypedFromTarget();
+    _resetScanSteal();
+    return;
+  }
+  if (_scanLooksIncomplete(cleaned) && (Date.now() - lastScanAt) < 900) {
+    if (timerEscaner) clearTimeout(timerEscaner);
+    timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
+    return;
+  }
+
   bufferEscaner = "";
   if (scannerInput) scannerInput.value = "";
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = null;
-  const cleaned = sanitizeScanCode(c);
-  const fromScannerFocus = document.activeElement === scannerInput;
-  const likelyScan = fromScannerFocus || _scanTiming.source === "input" || _scanTiming.source === "bg" || isLikelyScanByTiming(_scanTiming.deltas);
   _resetScanTiming();
   if (_scanSteal.active) _removeTypedFromTarget();
   _resetScanSteal();
-  if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
-  if (!likelyScan) return;
   procesarCodigo(cleaned, { source: "web" });
 }
 
