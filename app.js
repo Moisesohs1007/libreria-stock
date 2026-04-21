@@ -95,6 +95,98 @@ function mostrarMensaje(texto, tipo="ok") {
 }
 window.mostrarMensaje = mostrarMensaje;
 
+const _OFFLINE_QUEUE_KEY = "offline_sales_queue_v1";
+const _OFFLINE_FAILED_KEY = "offline_sales_failed_v1";
+const _OFFLINE_SYNC = { running: false, lastAt: 0 };
+
+function _offlineLoad() {
+  try {
+    const raw = localStorage.getItem(_OFFLINE_QUEUE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function _offlineSave(arr) {
+  try {
+    localStorage.setItem(_OFFLINE_QUEUE_KEY, JSON.stringify(arr || []));
+  } catch {}
+}
+
+function _offlineFailPush(item, err) {
+  try {
+    const raw = localStorage.getItem(_OFFLINE_FAILED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    const out = Array.isArray(arr) ? arr : [];
+    out.push({ ...item, failedAt: Date.now(), err: String(err || "") });
+    while (out.length > 200) out.shift();
+    localStorage.setItem(_OFFLINE_FAILED_KEY, JSON.stringify(out));
+  } catch {}
+}
+
+function _offlineEnqueue(code, meta) {
+  const codigo = sanitizeScanCode(code);
+  if (!codigo) return;
+  const arr = _offlineLoad();
+  const last = arr[arr.length - 1];
+  if (last && last.codigo === codigo && (Date.now() - (last.at || 0)) < 1000) return;
+  const item = {
+    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    codigo,
+    at: Date.now(),
+    source: meta?.source || "",
+    rol: rolActual || "",
+    vendedor: nombreVendedor || "Admin",
+    usuario: leerSesion()?.usuario || "",
+  };
+  arr.push(item);
+  while (arr.length > 300) arr.shift();
+  _offlineSave(arr);
+}
+
+function _shouldQueueError(e) {
+  if (!navigator.onLine) return true;
+  const code = String(e?.code || "").toLowerCase();
+  const msg = String(e?.message || "").toLowerCase();
+  if (code.includes("unavailable") || msg.includes("unavailable")) return true;
+  if (msg.includes("network") || msg.includes("failed to fetch")) return true;
+  return false;
+}
+
+async function _offlineFlush(force) {
+  if (_OFFLINE_SYNC.running) return;
+  if (!rolActual) return;
+  if (!navigator.onLine) return;
+  if (!force && (Date.now() - _OFFLINE_SYNC.lastAt) < 5000) return;
+  const arr = _offlineLoad();
+  if (!arr.length) return;
+  _OFFLINE_SYNC.running = true;
+  _OFFLINE_SYNC.lastAt = Date.now();
+  try {
+    mostrarMensaje(`📡 Enviando ${arr.length} venta(s) pendientes...`, "warning");
+    while (arr.length) {
+      if (!navigator.onLine) break;
+      const it = arr[0];
+      try {
+        const ok = await procesarCodigo(it.codigo, { source: it.source || "offline", offlineReplay: true, throwOnError: true, vendedor: it.vendedor, rol: it.rol });
+        arr.shift();
+        _offlineSave(arr);
+        if (!ok) continue;
+      } catch (e) {
+        if (_shouldQueueError(e)) break;
+        _offlineFailPush(it, e?.code || e?.message || e);
+        arr.shift();
+        _offlineSave(arr);
+      }
+    }
+    if (!arr.length) mostrarMensaje("✅ Ventas pendientes enviadas", "ok");
+  } finally {
+    _OFFLINE_SYNC.running = false;
+  }
+}
+
 function _pushRuntimeError(kind, err) {
   try {
     const raw = localStorage.getItem("runtime_errors");
@@ -152,6 +244,7 @@ function activarAdmin() {
   document.getElementById("admin-screen").style.display  = "block";
   if (scannerInput) scannerInput.focus();
   iniciarListeners();
+  _offlineFlush(true);
 }
 
 function activarVendedor(nombre) {
@@ -165,6 +258,7 @@ function activarVendedor(nombre) {
   if (scannerInput) scannerInput.focus();
   iniciarListeners();
   if (window._impAfterLogin) window._impAfterLogin();
+  _offlineFlush(true);
 }
 
 window.cerrarSesion = function() {
@@ -176,6 +270,9 @@ window.cerrarSesion = function() {
   document.getElementById("login-user").value = "";
   document.getElementById("login-pass").value = "";
 };
+
+window.addEventListener("online", () => { try { _offlineFlush(true); } catch {} });
+setInterval(() => { try { _offlineFlush(false); } catch {} }, 8000);
 
 (function() {
   const { rol, nombre } = leerSesion();
@@ -845,13 +942,14 @@ async function procesarCodigo(codigo, meta) {
   const source = meta?.source || "";
   const started = performance.now();
   codigo = sanitizeScanCode(codigo);
-  if (!codigo) return;
+  if (!codigo) return false;
   if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
-  if (source === "web" && !isSalesContext()) {
+  if (!meta?.offlineReplay && !navigator.onLine) {
     const ms = Math.round(performance.now() - started);
-    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "NOT_IN_SALES" });
-    mostrarMensaje("⚠️ Para vender por escaneo, entra a Ventas", "warning");
-    return;
+    _offlineEnqueue(codigo, meta);
+    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source: source || "offline", rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "QUEUED_OFFLINE" });
+    mostrarMensaje("⏳ Sin internet: venta guardada (se enviará al volver)", "warning");
+    return true;
   }
   if (_scanDedupe.code === codigo && (Date.now() - _scanDedupe.at) < SCAN_DEDUPE_MS) return;
   _scanDedupe.code = codigo;
@@ -886,7 +984,12 @@ async function procesarCodigo(codigo, meta) {
       const ms = Math.round(performance.now() - started);
       _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "NO_ENCONTRADO" });
       mostrarMensaje("❌ No encontrado: " + codigo, "error");
-      return;
+      if (meta?.throwOnError) {
+        const err = new Error("NO_ENCONTRADO");
+        err.code = "NO_ENCONTRADO";
+        throw err;
+      }
+      return false;
     }
 
     await runTransaction(db, async (tx) => {
@@ -915,8 +1018,8 @@ async function procesarCodigo(codigo, meta) {
         total,
         precio: total,
         fecha: new Date(),
-        vendedor: nombreVendedor || "Admin",
-        rol: rolActual || "",
+        vendedor: meta?.vendedor || nombreVendedor || "Admin",
+        rol: meta?.rol || rolActual || "",
         fuente: source || "",
       });
     });
@@ -925,6 +1028,7 @@ async function procesarCodigo(codigo, meta) {
     _scanAuditPush({ ts: new Date().toISOString(), ok: true, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms });
     if (_scanDebug()) console.log("scan_ok", { code: codigo, ms });
     mostrarMensaje(`✅ ${(p.nombre || "Venta registrada")} (${ms}ms)`, "ok");
+    return true;
   } catch (e) {
     const ms = Math.round(performance.now() - started);
     let msg = "❌ Error registrando venta";
@@ -932,9 +1036,17 @@ async function procesarCodigo(codigo, meta) {
     else if (String(e?.message || "") === "NOT_FOUND") msg = "❌ Producto no encontrado";
     else if (String(e?.code || "").includes("permission")) msg = "❌ Sin permisos para registrar ventas";
     else if (String(e?.code || "").includes("unavailable")) msg = "❌ Sin conexión a la base de datos";
-    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: String(e?.code || e?.message || e) });
+    const errStr = String(e?.code || e?.message || e);
+    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: errStr });
+    if (!meta?.offlineReplay && _shouldQueueError(e)) {
+      _offlineEnqueue(codigo, meta);
+      mostrarMensaje("⏳ Sin internet: venta guardada (se enviará al volver)", "warning");
+      return true;
+    }
     mostrarMensaje(msg, msg.startsWith("⚠️") ? "warning" : "error");
     if (_scanDebug()) console.error("scan_error", e);
+    if (meta?.throwOnError) throw e;
+    return false;
   }
 }
 
@@ -949,8 +1061,6 @@ function finalizarEscaneo() {
     if (timerEscaner) clearTimeout(timerEscaner);
     timerEscaner = null;
     _resetScanTiming();
-    if (_scanSteal.active) _removeTypedFromTarget();
-    _resetScanSteal();
     return;
   }
   if (!likelyScan) {
@@ -959,8 +1069,6 @@ function finalizarEscaneo() {
     if (timerEscaner) clearTimeout(timerEscaner);
     timerEscaner = null;
     _resetScanTiming();
-    if (_scanSteal.active) _removeTypedFromTarget();
-    _resetScanSteal();
     return;
   }
   if (_scanLooksIncomplete(cleaned) && (Date.now() - lastScanAt) < 900) {
@@ -974,8 +1082,6 @@ function finalizarEscaneo() {
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = null;
   _resetScanTiming();
-  if (_scanSteal.active) _removeTypedFromTarget();
-  _resetScanSteal();
   procesarCodigo(cleaned, { source: "web" });
 }
 
@@ -1052,7 +1158,6 @@ document.addEventListener("keydown", e => {
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
   if (e.key === "Enter" || e.key === "Tab") {
     if (bufferEscaner && (_scanSteal.active || isLikelyScanByTiming(_scanTiming.deltas))) {
-      e.preventDefault();
       finalizarEscaneo();
     }
     return;
@@ -1068,20 +1173,6 @@ document.addEventListener("keydown", e => {
       bufferEscaner += e.key;
       if (timerEscaner) clearTimeout(timerEscaner);
       timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
-
-      _scanSteal.target = ae;
-      _scanSteal.typed += e.key;
-
-      const avgOk = isLikelyScanByTiming(_scanTiming.deltas) || (_scanTiming.deltas.length >= 2 && (_scanTiming.deltas.reduce((a,b)=>a+b,0)/_scanTiming.deltas.length) <= 160);
-      const lookOk = _looksLikeScanText(sanitizeScanCode(bufferEscaner));
-      if (!_scanSteal.active && bufferEscaner.length >= 3 && avgOk && lookOk) {
-        _scanSteal.active = true;
-        _removeTypedFromTarget();
-      }
-      if (_scanSteal.active) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
       return;
     }
 
@@ -1093,6 +1184,7 @@ document.addEventListener("input", e => {
   if (!rolActual) return;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
+  if (localStorage.getItem("scan_clean_inputs") !== "1") return;
   const t = e.target;
   if (!t || t === scannerInput) return;
   const tag = (t.tagName || "").toUpperCase();
@@ -1656,7 +1748,6 @@ window.ayudaSeguridad = () => {
     "Para modo fondo:\n" +
     "- Ejecuta escaner_fondo.py / instalador del escáner en la PC.\n" +
     "- En Chrome: icono candado → Configuración del sitio → permitir 'Contenido no seguro'.\n\n" +
-    "Nota: para registrar ventas por escaneo, entra a la pestaña Ventas.\n\n" +
     `Estado actual: ${bg ? "FONDO habilitado" : "FONDO deshabilitado"}\n\n` +
     "¿Quieres alternarlo ahora?";
   const ok = confirm(msg);
