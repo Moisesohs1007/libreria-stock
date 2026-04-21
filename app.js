@@ -34,6 +34,13 @@ let rolActual          = null;
 let nombreVendedor     = "";
 let listenersIniciados = false;
 
+function _timeoutSignal(ms) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const c = new AbortController();
+  setTimeout(() => { try { c.abort(); } catch {} }, ms);
+  return c.signal;
+}
+
 // =============================================
 // GESTIÓN DE SESIÓN
 // =============================================
@@ -740,6 +747,22 @@ function _removeTypedFromTarget() {
   if (v.endsWith(typed)) t.value = v.slice(0, -typed.length);
 }
 
+const _scanAudit = { max: 120 };
+function _scanAuditEnabled() { return localStorage.getItem("scan_audit") === "1"; }
+function _scanAuditPush(e) {
+  if (!_scanAuditEnabled()) return;
+  try {
+    const raw = localStorage.getItem("scan_audit_log");
+    const arr = raw ? JSON.parse(raw) : [];
+    arr.push(e);
+    while (arr.length > _scanAudit.max) arr.shift();
+    localStorage.setItem("scan_audit_log", JSON.stringify(arr));
+  } catch {}
+}
+
+const _scanDedupe = { code: "", at: 0 };
+const SCAN_DEDUPE_MS = 450;
+
 function setScannerDot(ok, mode) {
   const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
   const dot = document.getElementById(id);
@@ -758,11 +781,16 @@ function setBgBadge(visible) {
   el.style.display = visible ? "flex" : "none";
 }
 
-async function procesarCodigo(codigo) {
+async function procesarCodigo(codigo, meta) {
 
+  const source = meta?.source || "";
+  const started = performance.now();
   codigo = sanitizeScanCode(codigo);
   if (!codigo) return;
   if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
+  if (_scanDedupe.code === codigo && (Date.now() - _scanDedupe.at) < SCAN_DEDUPE_MS) return;
+  _scanDedupe.code = codigo;
+  _scanDedupe.at = Date.now();
   try {
     const variantes = buildScanVariants(codigo);
     if (_scanDebug()) console.log("scan_variantes", codigo, variantes, { idx: _productoIndex.size });
@@ -806,19 +834,34 @@ async function procesarCodigo(codigo) {
       else tx.update(prodRef, { stock: increment(-1) });
 
       const ventaRef = doc(collection(db, "ventas"));
+      const cant = 1;
+      const unit = Number(data.precio ?? p.precio ?? 0) || 0;
       tx.set(ventaRef, {
         codigo: data.codigo ?? p.codigo ?? codigo,
         nombre: data.nombre ?? p.nombre ?? "",
-        precio: data.precio ?? p.precio ?? 0,
+        cantidad: cant,
+        precio_unitario: unit,
+        total: unit * cant,
         fecha: new Date(),
         vendedor: nombreVendedor || "Admin",
+        rol: rolActual || "",
+        fuente: source || "",
       });
     });
 
-    mostrarMensaje("✅ " + (p.nombre || "Venta registrada"), "ok");
+    const ms = Math.round(performance.now() - started);
+    _scanAuditPush({ ts: new Date().toISOString(), ok: true, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms });
+    if (_scanDebug()) console.log("scan_ok", { code: codigo, ms });
+    mostrarMensaje(`✅ ${(p.nombre || "Venta registrada")} (${ms}ms)`, "ok");
   } catch (e) {
-    if (e?.code === "SIN_STOCK" || e?.message === "SIN_STOCK") mostrarMensaje("⚠️ Sin stock", "warning");
-    else mostrarMensaje("❌ Error registrando venta", "error");
+    const ms = Math.round(performance.now() - started);
+    let msg = "❌ Error registrando venta";
+    if (e?.code === "SIN_STOCK" || e?.message === "SIN_STOCK") msg = "⚠️ Sin stock";
+    else if (String(e?.message || "") === "NOT_FOUND") msg = "❌ Producto no encontrado";
+    else if (String(e?.code || "").includes("permission")) msg = "❌ Sin permisos para registrar ventas";
+    else if (String(e?.code || "").includes("unavailable")) msg = "❌ Sin conexión a la base de datos";
+    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: String(e?.code || e?.message || e) });
+    mostrarMensaje(msg, msg.startsWith("⚠️") ? "warning" : "error");
     if (_scanDebug()) console.error("scan_error", e);
   }
 }
@@ -837,7 +880,7 @@ function finalizarEscaneo() {
   _resetScanSteal();
   if (!cleaned || cleaned.length < SCAN_MIN_LEN) return;
   if (!likelyScan) return;
-  procesarCodigo(cleaned);
+  procesarCodigo(cleaned, { source: "web" });
 }
 
 function alimentarEscaneo(ch, source) {
@@ -976,7 +1019,7 @@ async function ricohSnmpGet(oid) {
   const { ip, port, community } = ricohConfig;
   if (!ip) throw new Error("IP no configurada");
   const url = `http://localhost:${port}/snmp?ip=${encodeURIComponent(ip)}&community=${encodeURIComponent(community)}&oid=${encodeURIComponent(oid)}`;
-  const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  const resp = await fetch(url, { signal: _timeoutSignal(5000) });
   const data = await resp.json();
   return data.value;
 }
@@ -1512,9 +1555,9 @@ setInterval(async () => {
   try {
     setBgBadge(true);
     setScannerDot(true, "bg");
-    const r = await fetch("http://127.0.0.1:7777/poll", { signal: AbortSignal.timeout(1800) });
+    const r = await fetch("http://127.0.0.1:7777/poll", { signal: _timeoutSignal(1800) });
     const d = await r.json();
-    if(d.codigo) procesarCodigo(d.codigo);
+    if (d.codigo) procesarCodigo(d.codigo, { source: "bg" });
     _bgFailCount = 0;
   } catch(e) {
     _bgFailCount += 1;
@@ -1533,7 +1576,7 @@ setInterval(async () => {
 
 window.habilitarEscanerFondo = async function() {
   try {
-    const r = await fetch("http://127.0.0.1:7777/status", { signal: AbortSignal.timeout(1500) });
+    const r = await fetch("http://127.0.0.1:7777/status", { signal: _timeoutSignal(1500) });
     if (!r.ok) throw new Error(String(r.status));
     localStorage.setItem("bg_scanner_enabled", "1");
     _bgFailCount = 0;
@@ -1864,7 +1907,7 @@ window.scanDoctorUI = async function() {
   const test = async (label, url) => {
     add(`⏳ ${label}: ${url}`);
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(1800) });
+      const r = await fetch(url, { signal: _timeoutSignal(1800) });
       const txt = await r.text();
       add(`✅ ${label}: HTTP ${r.status}`);
       if (txt) add(txt.slice(0, 600));
