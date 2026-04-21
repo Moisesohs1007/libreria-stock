@@ -392,56 +392,99 @@ window.generarEtiquetas = async function() {
   const printDiv = document.getElementById("etiquetas-print");
   if (!prev || !printDiv) return;
 
-  const tamMap = { "25x10": { w: 95, h: 38 }, "30x20": { w: 113, h: 76 }, "50x30": { w: 189, h: 113 }, "60x40": { w: 227, h: 151 } };
-  prev.style.display = "grid";
+  const PX_PER_MM = 96 / 25.4;
+  function parseTamMm(tam) {
+    const s = String(tam || "30x20");
+    const m = s.match(/^(\d+)\s*x\s*(\d+)$/i);
+    const w = m ? parseInt(m[1], 10) : 30;
+    const h = m ? parseInt(m[2], 10) : 20;
+    return { wmm: w > 0 ? w : 30, hmm: h > 0 ? h : 20 };
+  }
+  function mmToPx(mm) { return Math.round(mm * PX_PER_MM); }
+
+  prev.style.display = "flex";
+  prev.style.flexWrap = "wrap";
+  prev.style.alignItems = "flex-start";
   prev.style.gap = "8px";
-  prev.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   prev.innerHTML = "";
-  printDiv.innerHTML = `<div class="etq-grid" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:3px;padding:6px;"></div>`;
-  const grid = printDiv.querySelector(".etq-grid");
+  printDiv.innerHTML = "";
 
+  const grouped = new Map();
   for (const p of items) {
-    const dim = tamMap[p.tam] || tamMap["30x20"];
-    const qrSize = Math.min(dim.h - 14, dim.w - 18);
+    const key = String(p.tam || "30x20");
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(p);
+  }
 
-    let imgHtml = "";
+  async function buildCodeImageHtml(codigo, tipo, targetPx) {
+    const code = String(codigo || "").trim();
+    if (!code) return "";
     if (tipo === "qr") {
-      const tmp = document.createElement("div");
-      tmp.style.cssText = "position:absolute;left:-9999px;top:-9999px;";
-      document.body.appendChild(tmp);
-      new QRCode(tmp, { text: p.codigo, width: qrSize, height: qrSize, correctLevel: QRCode.CorrectLevel.M });
-      await new Promise(r => setTimeout(r, 30));
-      const qrImg = tmp.querySelector("img") || tmp.querySelector("canvas");
-      const src = qrImg ? (qrImg.src || qrImg.toDataURL()) : "";
-      document.body.removeChild(tmp);
-      imgHtml = `<img src="${src}" style="width:${qrSize}px;height:${qrSize}px;display:block;margin:2px auto;">`;
-    } else {
-      const bcCanvas = document.createElement("canvas");
       try {
-        JsBarcode(bcCanvas, p.codigo, { format: "CODE128", width: 1, height: Math.min(qrSize, 32), displayValue: false, margin: 0 });
-        imgHtml = `<img src="${bcCanvas.toDataURL()}" style="max-width:100%;height:${Math.min(qrSize, 32)}px;display:block;margin:2px auto;">`;
+        const tmp = document.createElement("div");
+        tmp.style.cssText = "position:absolute;left:-9999px;top:-9999px;";
+        document.body.appendChild(tmp);
+        new QRCode(tmp, { text: code, width: targetPx, height: targetPx, correctLevel: QRCode.CorrectLevel.M });
+        let src = "";
+        for (let i = 0; i < 4; i++) {
+          await new Promise(r => setTimeout(r, 80));
+          const qrImg = tmp.querySelector("img") || tmp.querySelector("canvas");
+          src = qrImg ? (qrImg.src || qrImg.toDataURL?.() || "") : "";
+          if (src) break;
+        }
+        document.body.removeChild(tmp);
+        if (!src) return "";
+        return `<img src="${src}" style="width:${targetPx}px;height:${targetPx}px;display:block;margin:2px auto;">`;
       } catch {
-        imgHtml = "";
+        return "";
       }
     }
+    try {
+      const bcCanvas = document.createElement("canvas");
+      JsBarcode(bcCanvas, code, { format: "CODE128", width: 1, height: Math.min(targetPx, 32), displayValue: false, margin: 0 });
+      return `<img src="${bcCanvas.toDataURL()}" style="max-width:100%;height:${Math.min(targetPx, 32)}px;display:block;margin:2px auto;">`;
+    } catch {
+      return "";
+    }
+  }
 
-    const html = `
-      <div style="font-size:12px;font-weight:900;line-height:1.2;margin-bottom:2px;overflow:hidden;max-height:2.6em;">${p.nombre}</div>
-      ${imgHtml}
-      <div style="font-size:10px;color:#475569;" class="mono">${p.codigo}</div>
-      <div style="font-size:12px;font-weight:900;">S/ ${parseFloat(p.precio).toFixed(2)}</div>
-    `;
+  for (const [tamKey, groupItems] of grouped.entries()) {
+    const { wmm, hmm } = parseTamMm(tamKey);
+    const wpx = mmToPx(wmm);
+    const hpx = mmToPx(hmm);
+    const codePx = Math.max(24, Math.min(hpx - 18, wpx - 18));
 
-    const box = document.createElement("div");
-    box.style.cssText = `background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px;text-align:center;width:${dim.w}px;min-height:${dim.h}px;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
-    box.innerHTML = html;
-    prev.appendChild(box);
+    const page = document.createElement("div");
+    page.style.cssText = "page-break-after:always;padding:6mm;";
+    const grid = document.createElement("div");
+    grid.className = "etq-grid";
+    grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols}, ${wmm}mm);gap:2mm;align-content:start;justify-content:start;`;
+    page.appendChild(grid);
+    printDiv.appendChild(page);
 
-    const item = document.createElement("div");
-    item.className = "etq-item";
-    item.style.cssText = `padding:3px;width:${dim.w}px;min-height:${dim.h}px;`;
-    item.innerHTML = html;
-    grid.appendChild(item);
+    for (const p of groupItems) {
+      const codigo = String(p.codigo || "").trim();
+      const nombre = String(p.nombre || "").trim();
+      const precio = parseFloat(p.precio);
+      const imgHtml = await buildCodeImageHtml(codigo, tipo, codePx);
+      const html = `
+        <div style="font-size:12px;font-weight:900;line-height:1.2;margin-bottom:2px;overflow:hidden;max-height:2.6em;">${nombre}</div>
+        ${imgHtml || `<div class="mono" style="font-size:11px;color:#64748b;margin:4px 0;">${codigo}</div>`}
+        <div style="font-size:10px;color:#475569;" class="mono">${codigo}</div>
+        <div style="font-size:12px;font-weight:900;">S/ ${Number.isFinite(precio) ? precio.toFixed(2) : "0.00"}</div>
+      `;
+
+      const box = document.createElement("div");
+      box.style.cssText = `background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px;text-align:center;width:${wpx}px;min-height:${hpx}px;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
+      box.innerHTML = html;
+      prev.appendChild(box);
+
+      const item = document.createElement("div");
+      item.className = "etq-item";
+      item.style.cssText = `width:${wmm}mm;min-height:${hmm}mm;padding:1mm;`;
+      item.innerHTML = html;
+      grid.appendChild(item);
+    }
   }
 
   mostrarMensaje(`✅ ${items.length} etiquetas generadas`, "ok");
