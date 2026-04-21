@@ -41,6 +41,14 @@ function _timeoutSignal(ms) {
   return c.signal;
 }
 
+function scanServiceBase() {
+  const override = localStorage.getItem("scan_svc_base");
+  if (override) return override;
+  const isLocal = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+  if (isLocal && String(location.port || "") === "8787") return location.origin;
+  return "http://127.0.0.1:7777";
+}
+
 function _toNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -86,6 +94,24 @@ function mostrarMensaje(texto, tipo="ok") {
   window._msgTimer = setTimeout(() => el.classList.remove("visible"), 3000);
 }
 window.mostrarMensaje = mostrarMensaje;
+
+function _pushRuntimeError(kind, err) {
+  try {
+    const raw = localStorage.getItem("runtime_errors");
+    const arr = raw ? JSON.parse(raw) : [];
+    arr.push({ ts: new Date().toISOString(), kind, err: String(err || "") });
+    while (arr.length > 50) arr.shift();
+    localStorage.setItem("runtime_errors", JSON.stringify(arr));
+  } catch {}
+}
+
+window.addEventListener("error", (e) => {
+  _pushRuntimeError("error", e?.message || e?.error || "unknown");
+});
+
+window.addEventListener("unhandledrejection", (e) => {
+  _pushRuntimeError("rejection", e?.reason || "unknown");
+});
 
 // =============================================
 // AUTENTICACIÓN
@@ -812,6 +838,12 @@ async function procesarCodigo(codigo, meta) {
   codigo = sanitizeScanCode(codigo);
   if (!codigo) return;
   if (_scanDebug()) mostrarMensaje("🔍 Escaneado: " + codigo, "ok");
+  if (source === "web" && !isSalesContext()) {
+    const ms = Math.round(performance.now() - started);
+    _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "NOT_IN_SALES" });
+    mostrarMensaje("⚠️ Para vender por escaneo, entra a Ventas", "warning");
+    return;
+  }
   if (_scanDedupe.code === codigo && (Date.now() - _scanDedupe.at) < SCAN_DEDUPE_MS) return;
   _scanDedupe.code = codigo;
   _scanDedupe.at = Date.now();
@@ -841,7 +873,12 @@ async function procesarCodigo(codigo, meta) {
       if (docSnap) p = { id: docSnap.id, ...docSnap.data() };
     }
 
-    if (!p || !p.id) { mostrarMensaje("❌ No encontrado (código no registrado)", "error"); return; }
+    if (!p || !p.id) {
+      const ms = Math.round(performance.now() - started);
+      _scanAuditPush({ ts: new Date().toISOString(), ok: false, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms, err: "NO_ENCONTRADO" });
+      mostrarMensaje("❌ No encontrado: " + codigo, "error");
+      return;
+    }
 
     await runTransaction(db, async (tx) => {
       const prodRef = doc(db, "productos", p.id);
@@ -1609,7 +1646,8 @@ setInterval(async () => {
   try {
     setBgBadge(true);
     setScannerDot(true, "bg");
-    const r = await fetch("http://127.0.0.1:7777/poll", { signal: _timeoutSignal(1200) });
+    const base = scanServiceBase();
+    const r = await fetch(base + "/poll", { signal: _timeoutSignal(1200) });
     const d = await r.json();
     if (d.codigo) procesarCodigo(d.codigo, { source: "bg" });
     _bgFailCount = 0;
@@ -1632,7 +1670,8 @@ setInterval(async () => {
 
 window.habilitarEscanerFondo = async function() {
   try {
-    const r = await fetch("http://127.0.0.1:7777/status", { signal: _timeoutSignal(1500) });
+    const base = scanServiceBase();
+    const r = await fetch(base + "/status", { signal: _timeoutSignal(1500) });
     if (!r.ok) throw new Error(String(r.status));
     localStorage.setItem("bg_scanner_enabled", "1");
     _bgFailCount = 0;
@@ -1975,8 +2014,18 @@ window.scanDoctorUI = async function() {
   };
 
   lines.length = 0;
-  add("=== Doctor Escáner (localhost:7777) ===");
+  add("=== Doctor Escáner (127.0.0.1:7777) ===");
   add(`Hora: ${new Date().toLocaleString("es-PE")}`);
+  add(`Rol: ${rolActual || "—"} | Usuario: ${(nombreVendedor || (rolActual === "admin" ? "Admin" : "")) || "—"}`);
+  add(`FONDO: ${localStorage.getItem("bg_scanner_enabled") === "1" ? "ON" : "OFF"}`);
+  add(`Audit: ${localStorage.getItem("scan_audit") === "1" ? "ON" : "OFF"}`);
+  add(`Protocol: ${location.protocol}`);
+  add(`ScanBase: ${scanServiceBase()}`);
+  add("");
+  try {
+    const errs = JSON.parse(localStorage.getItem("runtime_errors") || "[]");
+    if (errs.length) add("Runtime errors (últimos): " + JSON.stringify(errs.slice(-3)));
+  } catch {}
   add("");
   const s = await test("STATUS", "http://127.0.0.1:7777/status");
   add("");
@@ -1987,7 +2036,8 @@ window.scanDoctorUI = async function() {
 
   if (s.ok && p.ok) {
     add("RESULTADO: ✅ El servicio del escáner está activo en esta PC.");
-    add("Si no funciona en la web, revisa: candado del navegador → permitir 'Contenido no seguro' y habilitar FONDO en el indicador ESCÁNER.");
+    if (location.protocol === "https:") add("Nota: si estás en https, debes permitir 'Contenido no seguro' para acceder a http://127.0.0.1:7777.");
+    add("Si no funciona en la web: candado del navegador → permitir 'Contenido no seguro' y habilitar FONDO en el indicador ESCÁNER.");
   } else {
     add("RESULTADO: ❌ El servicio del escáner NO responde correctamente en esta PC.");
     add("Solución: descarga y ejecuta el instalador del escáner (setup_escaner_fondo.cmd) como Administrador.");
