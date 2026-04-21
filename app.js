@@ -771,7 +771,7 @@ function shouldForceScannerFocus() {
   if (rolActual === "vendedor") {
     return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
   }
-  return true;
+  return document.getElementById("tab-ventas")?.classList?.contains("active") === true;
 }
 
 if (scannerInput) {
@@ -1381,9 +1381,12 @@ window.ayudaSeguridad = () => {
 setInterval(() => {
   if (!scannerInput) return;
   if (localStorage.getItem("bg_scanner_enabled") === "1") return;
-  if (shouldForceScannerFocus()) {
-    try { scannerInput.focus(); } catch {}
-  }
+  if (!shouldForceScannerFocus()) return;
+  const ae = document.activeElement;
+  const isScanner = ae === scannerInput;
+  const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
+  if (isEditable && !isScanner) return;
+  try { scannerInput.focus(); } catch {}
 }, 1000);
 
 // Escáner de fondo
