@@ -906,7 +906,6 @@ if (scannerInput) {
 
 document.addEventListener("keydown", e => {
   if (!rolActual) return;
-  if (localStorage.getItem("bg_scanner_enabled") === "1") return;
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
   const isEditable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
@@ -1497,7 +1496,6 @@ window.ayudaSeguridad = () => {
 // Foco automático
 setInterval(() => {
   if (!scannerInput) return;
-  if (localStorage.getItem("bg_scanner_enabled") === "1") return;
   if (!shouldForceScannerFocus()) return;
   const ae = document.activeElement;
   const isScanner = ae === scannerInput;
@@ -1514,7 +1512,7 @@ setInterval(async () => {
   try {
     setBgBadge(true);
     setScannerDot(true, "bg");
-    const r = await fetch("http://localhost:7777/poll");
+    const r = await fetch("http://127.0.0.1:7777/poll", { signal: AbortSignal.timeout(1800) });
     const d = await r.json();
     if(d.codigo) procesarCodigo(d.codigo);
     _bgFailCount = 0;
@@ -1522,6 +1520,9 @@ setInterval(async () => {
     _bgFailCount += 1;
     setBgBadge(false);
     setScannerDot(false);
+    if (_bgFailCount === 1) {
+      mostrarMensaje("⚠️ No se pudo acceder al escáner en fondo (bloqueo del navegador o servicio apagado).", "warning");
+    }
     if (_bgFailCount >= 6) {
       localStorage.setItem("bg_scanner_enabled", "0");
       _bgFailCount = 0;
@@ -1530,10 +1531,19 @@ setInterval(async () => {
   }
 }, 500);
 
-window.habilitarEscanerFondo = function() {
-  localStorage.setItem("bg_scanner_enabled", "1");
-  mostrarMensaje("✅ Escáner de fondo habilitado (este equipo)", "ok");
-  setBgBadge(true);
+window.habilitarEscanerFondo = async function() {
+  try {
+    const r = await fetch("http://127.0.0.1:7777/status", { signal: AbortSignal.timeout(1500) });
+    if (!r.ok) throw new Error(String(r.status));
+    localStorage.setItem("bg_scanner_enabled", "1");
+    _bgFailCount = 0;
+    mostrarMensaje("✅ Escáner de fondo habilitado (este equipo)", "ok");
+    setBgBadge(true);
+  } catch {
+    localStorage.setItem("bg_scanner_enabled", "0");
+    setBgBadge(false);
+    mostrarMensaje("❌ No se pudo habilitar FONDO. Activa 'Contenido no seguro' y verifica que el servicio 7777 esté encendido.", "error");
+  }
 };
 
 window.deshabilitarEscanerFondo = function() {
