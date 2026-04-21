@@ -26,7 +26,7 @@ TIEMPO_ENTRE_TECLAS_SCANNER = 0.05 # Los escáneres suelen enviar cada 10-30ms.
 SCAN_IDLE_S = 0.35
 LIB_MIN_LEN = 12
 MAX_ACCUM_S = 1.5
-LISTENER_SUPPRESS = True
+LISTENER_SUPPRESS = False
 
 class EscanerFiltroTotal:
     def __init__(self):
@@ -143,6 +143,9 @@ class EscanerFiltroTotal:
                 if self._leaked_count:
                     self._inject_backspace(self._leaked_count)
 
+            if self.es_escaneo_activo and not LISTENER_SUPPRESS:
+                self._inject_backspace(1)
+
             if looks or cleaned.upper().startswith("LIB-"):
                 if self.timer_envio:
                     self.timer_envio.cancel()
@@ -198,11 +201,12 @@ if __name__ == "__main__":
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     
     try:
-        LISTENER_SUPPRESS = True
-        listener = keyboard.Listener(on_press=on_press, suppress=True)
+        want = os.environ.get("LIBRERIA_SCANNER_SUPPRESS", "0") == "1"
+        LISTENER_SUPPRESS = bool(want)
+        listener = keyboard.Listener(on_press=on_press, suppress=LISTENER_SUPPRESS)
         listener.start()
     except Exception:
-        logging.exception("ERROR_INICIANDO_LISTENER suppress=true")
+        logging.exception("ERROR_INICIANDO_LISTENER suppress=%s", LISTENER_SUPPRESS)
         LISTENER_SUPPRESS = False
         listener = keyboard.Listener(on_press=on_press, suppress=False)
         listener.start()

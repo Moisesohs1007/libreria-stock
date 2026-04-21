@@ -57,7 +57,13 @@ $PyExe = $null
 
 function Install-EmergencyUnblock {
   try {
-    $dst = "$InstallDir\DESBLOQUEAR_TECLADO_ESCANER.cmd"
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $baseDir = $InstallDir
+    if (-not $isAdmin) {
+      $baseDir = Join-Path $env:LOCALAPPDATA "LibreriaScanner"
+      Ensure-Dir $baseDir
+    }
+    $dst = Join-Path $baseDir "DESBLOQUEAR_TECLADO_ESCANER.cmd"
     $desktop = [Environment]::GetFolderPath("Desktop")
     $dstDesktop = Join-Path $desktop "DESBLOQUEAR_TECLADO_ESCANER.cmd"
     $content = @"
@@ -84,14 +90,30 @@ pause
   }
 }
 
-function Resolve-Python {
+function Resolve-PythonExe {
   $cmdPython = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
-  $cmdPy = (Get-Command py.exe -ErrorAction SilentlyContinue).Source
+  $localPython = (Get-ChildItem "$env:LOCALAPPDATA\\Programs\\Python\\Python*\\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
   $candidates = @(
-    "$InstallDir\python\pythonw.exe",
-    "$InstallDir\python\python.exe",
-    $cmdPy,
+    "$InstallDir\\python\\python.exe",
+    $localPython,
     $cmdPython
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
+  if ($candidates.Count -gt 0) { return $candidates[0] }
+  return $null
+}
+
+function Resolve-PythonW([string]$pyExe) {
+  $cmdPythonW = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
+  $cmdPyW = (Get-Command pyw.exe -ErrorAction SilentlyContinue).Source
+  $localPythonW = (Get-ChildItem "$env:LOCALAPPDATA\\Programs\\Python\\Python*\\pythonw.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+  $fromExe = $null
+  if ($pyExe -and ($pyExe -like "*python.exe")) { $fromExe = ($pyExe -replace "python\.exe$","pythonw.exe") }
+  $candidates = @(
+    "$InstallDir\\python\\pythonw.exe",
+    $fromExe,
+    $localPythonW,
+    $cmdPythonW,
+    $cmdPyW
   ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
   if ($candidates.Count -gt 0) { return $candidates[0] }
   return $null
@@ -207,14 +229,13 @@ if ($Mode -eq "install") {
   Stop-Port 7777
   Install-EmergencyUnblock
   Install-ScannerScript
-  $PyExe = Resolve-Python
+  $PyExe = Resolve-PythonExe
   if (-not $PyExe) {
     Write-LogLine "ERROR: Python no encontrado. Instala Python en esta PC (o configura el instalador avanzado)."
     throw "PYTHON_NOT_FOUND"
   }
-  $PyW = $PyExe
-  if ($PyW -like "*python.exe") { $PyW = $PyW -replace "python\.exe$","pythonw.exe" }
-  if (-not (Test-Path -LiteralPath $PyW)) { $PyW = $PyExe }
+  $PyW = Resolve-PythonW $PyExe
+  if (-not $PyW) { $PyW = $PyExe }
   Ensure-Dependencies $PyExe
   Install-Task $PyW
   Start-Task
@@ -225,7 +246,9 @@ if ($Mode -eq "install") {
 
 if ($Mode -eq "doctor") {
   Write-LogLine "PID puerto 7777: $(Get-PortPid 7777)"
-  Write-LogLine "Python detectado: $(Resolve-Python)"
+  $pyExe = Resolve-PythonExe
+  Write-LogLine "Python exe: $pyExe"
+  Write-LogLine "Python w: $(Resolve-PythonW $pyExe)"
   Install-EmergencyUnblock
   Test-Endpoints
   Write-LogLine "Fin doctor. Log: $global:LogPath"
