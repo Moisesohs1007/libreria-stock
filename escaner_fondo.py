@@ -55,6 +55,8 @@ class EscanerFiltroTotal:
             self.timer_envio = None
 
     def _inject_backspace(self, count=1):
+        if not LISTENER_SUPPRESS:
+            return
         if not count or count <= 0:
             return
         self._injecting = True
@@ -140,11 +142,8 @@ class EscanerFiltroTotal:
             if looks and not self.es_escaneo_activo:
                 self.es_escaneo_activo = True
                 self._scan_started = True
-                if self._leaked_count:
+                if LISTENER_SUPPRESS and self._leaked_count:
                     self._inject_backspace(self._leaked_count)
-
-            if self.es_escaneo_activo and not LISTENER_SUPPRESS:
-                self._inject_backspace(1)
 
             if looks or cleaned.upper().startswith("LIB-"):
                 if self.timer_envio:
