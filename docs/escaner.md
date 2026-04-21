@@ -24,11 +24,24 @@ El sistema soporta 2 modos:
 - En Chrome/Edge: icono de candado → Configuración del sitio → permitir **Contenido no seguro**.
 - En la app: clic en el indicador **ESCÁNER** → confirmar habilitar “FONDO”.
 
+### Diagnóstico rápido
+
+- Verificar servicio modo fondo (en la PC donde corre el escáner):
+  - `http://localhost:7777/health`
+  - `http://localhost:7777/status`
+- Revisar log del modo fondo:
+  - `escaner_auditoria.log` (en la misma carpeta de `escaner_fondo.py`)
+- Activar modo diagnóstico en la web (opcional):
+  - En consola del navegador: `localStorage.setItem("scan_debug","1")`
+  - Para apagar: `localStorage.removeItem("scan_debug")`
+
 ### Pruebas recomendadas (checklist)
 
 #### A) Modo normal (web)
 - Con la app abierta en “Ventas”, escanear un código que exista:
   - Debe decrementar stock y crear venta.
+- Estando en otra pestaña interna (Inventario/Etiquetas), escanear:
+  - Debe registrar la venta sin forzar cambios de pestaña.
 - Escanear un código inexistente:
   - Debe mostrar “No encontrado”.
 - Probar escáner que NO envía Enter:
@@ -39,6 +52,7 @@ El sistema soporta 2 modos:
 #### B) Modo fondo (PC)
 - Con otra aplicación activa (Bloc de notas), escanear:
   - El código debe llegar al sistema sin tener la app en foco.
+  - Debe minimizar escritura “accidental” en la otra aplicación.
 - Con la app minimizada, escanear:
   - Al volver a la app, la venta debe aparecer registrada.
 - Deshabilitar “FONDO” y repetir:
@@ -48,4 +62,3 @@ El sistema soporta 2 modos:
 
 - El modo fondo usa captura de teclado a nivel sistema para detectar escaneos (PC local).
 - Debe ejecutarse solo en equipos controlados por el negocio.
-

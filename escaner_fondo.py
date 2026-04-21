@@ -33,6 +33,7 @@ class EscanerFiltroTotal:
         self.timer_envio = None
         self.es_escaneo_activo = False
         self._leaked = False
+        self._leaked_count = 0
         self._injecting = False
         self._controller = keyboard.Controller()
 
@@ -40,15 +41,19 @@ class EscanerFiltroTotal:
         self.buffer = ""
         self.es_escaneo_activo = False
         self._leaked = False
+        self._leaked_count = 0
         if self.timer_envio:
             self.timer_envio.cancel()
             self.timer_envio = None
 
-    def _inject_backspace(self):
+    def _inject_backspace(self, count=1):
+        if not count or count <= 0:
+            return
         self._injecting = True
         try:
-            self._controller.press(keyboard.Key.backspace)
-            self._controller.release(keyboard.Key.backspace)
+            for _ in range(int(count)):
+                self._controller.press(keyboard.Key.backspace)
+                self._controller.release(keyboard.Key.backspace)
         finally:
             self._injecting = False
 
@@ -93,7 +98,7 @@ class EscanerFiltroTotal:
             # 2. Si la tecla llega rápido o ya estamos en modo escaneo
             if delta < UMBRAL_HUMANO_MS or self.es_escaneo_activo:
                 if not self.es_escaneo_activo and self._leaked:
-                    self._inject_backspace()
+                    self._inject_backspace(self._leaked_count or 1)
                 self.es_escaneo_activo = True
                 self.buffer += char
                 
@@ -107,6 +112,7 @@ class EscanerFiltroTotal:
                 # 3. Es lento, podría ser la primera tecla de un escáner o un humano
                 self.buffer = char
                 self._leaked = True
+                self._leaked_count += 1
                 return True # Deja pasar la primera tecla (si las siguientes son rápidas, el buffer se completará)
 
         return True
