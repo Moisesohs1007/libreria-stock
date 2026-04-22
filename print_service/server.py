@@ -121,8 +121,12 @@ def create_app():
     user_id = (request.args.get("user_id") or "").strip()
     if not user_id:
       return jsonify({"error": "user_id requerido"}), 400
-    where = " AND (user_id=? OR user_id LIKE ?)"
-    params = [user_id, f"{user_id}@%"]
+    try:
+      where, params = build_where(request.args)
+    except ValueError as e:
+      return jsonify({"error": str(e)}), 400
+    where += " AND (user_id=? OR user_id LIKE ?)"
+    params.extend([user_id, f"{user_id}@%"])
     totals = dbmod.query_totals(conn, where, params)
     return jsonify({"user_id": user_id, "totals": totals})
 

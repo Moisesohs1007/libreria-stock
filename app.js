@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421af';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421af';
+import { db } from './firebase-config.js?v=20260421ag';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ag';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -2048,17 +2048,28 @@ function impQs(params) {
   return s ? `?${s}` : "";
 }
 
+function impIsoUtcCompat(d) {
+  return d.toISOString().replace("Z", "+00:00");
+}
+
 function impDateRangeToIso(desde, hasta) {
   const out = {};
   if (desde) {
     const d = new Date(`${desde}T00:00:00`);
-    out.from = d.toISOString();
+    out.from = impIsoUtcCompat(d);
   }
   if (hasta) {
     const d = new Date(`${hasta}T23:59:59`);
-    out.to = d.toISOString();
+    out.to = impIsoUtcCompat(d);
   }
   return out;
+}
+
+function impTodayIsoRange() {
+  const n = new Date();
+  const from = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0);
+  const to = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59);
+  return { from: impIsoUtcCompat(from), to: impIsoUtcCompat(to) };
 }
 
 function impSelectedValues(selId) {
@@ -2176,7 +2187,8 @@ function impBuildQuery() {
 
 async function impRefreshAll() {
   impLastQuery = impBuildQuery();
-  const qSummary = { ...impLastQuery };
+  const day = impTodayIsoRange();
+  const qSummary = { ...impLastQuery, ...day };
   const qRows = { ...impLastQuery, limit: impLimit, offset: (impPage - 1) * impLimit };
   const [s, l] = await Promise.all([
     impFetchJson("/api/prints/summary", qSummary),
@@ -2219,12 +2231,13 @@ async function impUpdateVendorWidget() {
 
     if (effectiveUserFull) effectiveUserBase = effectiveUserFull.split("@")[0].trim() || candidate;
 
-    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUserBase });
+    const day = impTodayIsoRange();
+    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUserBase, ...day });
     let t = r.totals || {};
     const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
     if (isAllZero && effectiveUserBase !== candidate) {
       try {
-        r = await impFetchJson("/api/prints/my-summary", { user_id: candidate });
+        r = await impFetchJson("/api/prints/my-summary", { user_id: candidate, ...day });
         t = r.totals || t;
       } catch {}
     }
@@ -2246,7 +2259,7 @@ async function impUpdateVendorWidget() {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
         return;
       }
-      const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed" });
+      const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed", ...day });
       const rows = sum?.by_printer || [];
       if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
