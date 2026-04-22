@@ -292,8 +292,8 @@
         <button class="sidebar-btn"        id="sb-impresiones" onclick="cambiarTabSidebar('tab-impresiones','sb-impresiones','Conteo de Impresiones')">  Conteo de Impresiones</button>
         <button class="sidebar-btn"        id="sb-ricoh-rep"  onclick="cambiarTabSidebar('tab-ricoh-rep','sb-ricoh-rep','Ricoh MP5055')">  Ricoh MP5055</button>
 
-        <!-- CONFIGURACIÓN -->
-        <div class="sb-group-title">Configuración</div>
+        <!-- INSTALACIONES -->
+        <div class="sb-group-title">Instalaciones</div>
         <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config. Ricoh MP5055')">  Ricoh MP5055</button>
         <button class="sidebar-btn"        id="sb-usuarios"   onclick="cambiarTabSidebar('tab-usuarios','sb-usuarios','Usuarios')">  Usuarios</button>
         <button class="sidebar-btn"        id="sb-etiquetas"  onclick="cambiarTabSidebar('tab-etiquetas','sb-etiquetas','Etiquetas')">  Etiquetas</button>
@@ -343,7 +343,7 @@
 
       <!-- CONFIGURACIÓN -->
       <div class="dt-group" id="dtg-config">
-        <button class="dt-group-btn" onclick="toggleDtGroup('dtg-config')">Configuración -</button>
+        <button class="dt-group-btn" onclick="toggleDtGroup('dtg-config')">Instalaciones -</button>
         <div class="dt-dropdown">
           <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Ricoh MP5055','dtg-config')">Ricoh MP5055</button>
           <button class="dt-drop-item" id="dt-usuarios"  onclick="selDt('tab-usuarios','dt-usuarios','Usuarios','dtg-config')">Usuarios</button>
@@ -519,7 +519,7 @@
       </div>
     </div>
 
-    <!-- TAB CONFIGURACIÓN — CONTEO DE IMPRESIONES -->
+    <!-- TAB INSTALACIONES — PC VENDEDOR -->
     <div id="tab-impresiones-svc" class="tab-panel">
       <div class="card" style="margin-bottom:14px;">
         <div class="card-title">PC del Vendedor — Instalación (1 clic)</div>
@@ -546,27 +546,9 @@
           </div>
         </div>
         <div id="vendor-setup-out" style="margin-top:10px;background:#0b1020;color:#e5e7eb;padding:10px;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;white-space:pre;overflow:auto;display:none;"></div>
-        <details style="margin-top:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa;padding:8px 10px;">
-          <summary style="cursor:pointer;font-weight:800;font-size:0.9rem;color:#334155;">Opciones avanzadas (soporte técnico)</summary>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button onclick="vendorPcDoctor()" class="btn" style="background:#111827;color:#fff;">Ver diagnóstico</button>
-            <a href="installer/setup_pos_local.cmd" download class="btn" style="background:#eee;">Instalar POS 8787</a>
-            <a href="installer/setup_escaner_fondo.cmd" download class="btn" style="background:#eee;">Instalar escáner 7777</a>
-            <a href="installer/setup_conteo_impresiones.cmd" download class="btn" style="background:#eee;">Instalar impresiones 5056</a>
-          </div>
-          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px;">
-            <div style="flex:1;min-width:220px;">
-              <label class="input-label">URL del servicio de impresiones</label>
-              <input id="imp-svc-url" class="input-field" placeholder="http://localhost:5056">
-            </div>
-            <div style="min-width:160px;">
-              <label class="input-label">Token (opcional)</label>
-              <input id="imp-svc-token" class="input-field" placeholder="X-Print-Token">
-            </div>
-            <button onclick="impGuardarConfig()" class="btn btn-primary" style="height:40px;">Guardar</button>
-            <button onclick="impProbarConexion()" class="btn btn-info" style="height:40px;">Probar</button>
-          </div>
-        </details>
+        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#6b7280;">
+          Nota: estas instalaciones se hacen solo en la PC del vendedor. En modo vendedor no aparecen botones de instalación.
+        </div>
       </div>
     </div>
 
@@ -1016,4 +998,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260421ai'></script></body></html>
+<script type='module' src='app.js?v=20260421aj'></script></body></html>

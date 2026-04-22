@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ai';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ai';
+import { db } from './firebase-config.js?v=20260421aj';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421aj';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -2415,6 +2415,10 @@ window.scanOneClick = async function() {
 };
 
 window.vendorPcSetupOneClick = async function() {
+  if (rolActual !== "admin") {
+    mostrarMensaje("⚠️ Solo Admin puede usar Instalaciones", "warning");
+    return;
+  }
   const out = document.getElementById("vendor-setup-out");
   const dl = document.getElementById("dl-pc-vendedor");
   const lines = [];
@@ -2483,6 +2487,10 @@ window.vendorPcSetupOneClick = async function() {
 };
 
 window.vendorPcDoctor = async function() {
+  if (rolActual !== "admin") {
+    mostrarMensaje("⚠️ Solo Admin puede usar Instalaciones", "warning");
+    return;
+  }
   const out = document.getElementById("vendor-setup-out");
   const lines = [];
   const show = () => {
