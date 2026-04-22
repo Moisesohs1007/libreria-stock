@@ -297,7 +297,7 @@
         <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config. Ricoh MP5055')">  Ricoh MP5055</button>
         <button class="sidebar-btn"        id="sb-usuarios"   onclick="cambiarTabSidebar('tab-usuarios','sb-usuarios','Usuarios')">  Usuarios</button>
         <button class="sidebar-btn"        id="sb-etiquetas"  onclick="cambiarTabSidebar('tab-etiquetas','sb-etiquetas','Etiquetas')">  Etiquetas</button>
-        <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','Instalación — Conteo de Impresiones')">  Instalación Conteo</button>
+        <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','PC Vendedor')">  PC Vendedor</button>
 
       </div>
     </div>
@@ -348,7 +348,7 @@
           <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Ricoh MP5055','dtg-config')">Ricoh MP5055</button>
           <button class="dt-drop-item" id="dt-usuarios"  onclick="selDt('tab-usuarios','dt-usuarios','Usuarios','dtg-config')">Usuarios</button>
           <button class="dt-drop-item" id="dt-etiquetas" onclick="selDt('tab-etiquetas','dt-etiquetas','Etiquetas','dtg-config')">Etiquetas</button>
-          <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','Instalación — Conteo de Impresiones','dtg-config')">Instalación Conteo</button>
+          <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','PC Vendedor','dtg-config')">PC Vendedor</button>
         </div>
       </div>
 
@@ -522,52 +522,51 @@
     <!-- TAB CONFIGURACIÓN — CONTEO DE IMPRESIONES -->
     <div id="tab-impresiones-svc" class="tab-panel">
       <div class="card" style="margin-bottom:14px;">
-        <div class="card-title">Instalación — Conteo de Impresiones</div>
-        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-          <div style="flex:1;min-width:220px;">
-            <label class="input-label">URL del servicio</label>
-            <input id="imp-svc-url" class="input-field" placeholder="http://localhost:5056">
-          </div>
-          <div style="min-width:160px;">
-            <label class="input-label">Token (opcional)</label>
-            <input id="imp-svc-token" class="input-field" placeholder="X-Print-Token">
-          </div>
-          <button onclick="impGuardarConfig()" class="btn btn-primary" style="height:40px;">Guardar</button>
-          <button onclick="impProbarConexion()" class="btn btn-info" style="height:40px;">Probar</button>
+        <div class="card-title">PC del Vendedor — Instalación (1 clic)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+          <button onclick="vendorPcSetupOneClick()" class="btn btn-primary">INSTALAR PC VENDEDOR (1 clic)</button>
+          <a id="dl-pc-vendedor" href="installer/setup_pc_vendedor.cmd" download style="display:none;">descargar</a>
           <div style="display:flex;align-items:center;gap:8px;margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#888;">
             <div class="dot" id="imp-dot" style="animation:none;background:#f87171;"></div>
             <span id="imp-estado">sin conexión</span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-          <a href="installer/setup_conteo_impresiones.cmd" download class="btn btn-primary" onclick="impMostrarNotaInstalador()">Descargar e instalar monitor de impresiones (recomendado)</a>
+        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#6b7280;">
+          Este botón descarga un instalador único. Solo funciona en la PC donde estará el vendedor (escáner + impresoras).
         </div>
+        <div style="margin-top:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:10px;">
+          <div style="font-weight:900;color:#0f172a;margin-bottom:6px;">Checklist (PC del Vendedor)</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#475569;line-height:1.45;">
+            1) Entra como Admin → PC Vendedor → presiona “INSTALAR PC VENDEDOR (1 clic)”.<br>
+            2) Ejecuta el archivo descargado como Administrador.<br>
+            3) Abre el sistema por: <b>http://127.0.0.1:8787/</b><br>
+            4) Verifica servicios locales:<br>
+            - Escáner: http://127.0.0.1:7777/status<br>
+            - Impresiones: http://127.0.0.1:5056/api/prints/health<br>
+          </div>
+        </div>
+        <div id="vendor-setup-out" style="margin-top:10px;background:#0b1020;color:#e5e7eb;padding:10px;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;white-space:pre;overflow:auto;display:none;"></div>
         <details style="margin-top:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa;padding:8px 10px;">
-          <summary style="cursor:pointer;font-weight:800;font-size:0.9rem;color:#334155;">Configuración avanzada (soporte técnico)</summary>
+          <summary style="cursor:pointer;font-weight:800;font-size:0.9rem;color:#334155;">Opciones avanzadas (soporte técnico)</summary>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <a href="installer/setup_conteo_impresiones_silencioso.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Instalador silencioso</a>
-            <a href="installer/iniciar_conteo_impresiones.cmd" download class="btn btn-info" onclick="impMostrarNotaInstalador()">Descargar iniciador</a>
-            <a href="installer/detener_conteo_impresiones.cmd" download class="btn" style="background:#eee;" onclick="impMostrarNotaInstalador()">Descargar detener</a>
-            <a href="installer/desinstalar_conteo_impresiones.cmd" download class="btn btn-danger" onclick="impMostrarNotaInstalador()">Descargar desinstalar</a>
-            <a href="installer/README.md" target="_blank" class="btn" style="background:#e8f4ff;">Guía técnica</a>
+            <button onclick="vendorPcDoctor()" class="btn" style="background:#111827;color:#fff;">Ver diagnóstico</button>
+            <a href="installer/setup_pos_local.cmd" download class="btn" style="background:#eee;">Instalar POS 8787</a>
+            <a href="installer/setup_escaner_fondo.cmd" download class="btn" style="background:#eee;">Instalar escáner 7777</a>
+            <a href="installer/setup_conteo_impresiones.cmd" download class="btn" style="background:#eee;">Instalar impresiones 5056</a>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px;">
+            <div style="flex:1;min-width:220px;">
+              <label class="input-label">URL del servicio de impresiones</label>
+              <input id="imp-svc-url" class="input-field" placeholder="http://localhost:5056">
+            </div>
+            <div style="min-width:160px;">
+              <label class="input-label">Token (opcional)</label>
+              <input id="imp-svc-token" class="input-field" placeholder="X-Print-Token">
+            </div>
+            <button onclick="impGuardarConfig()" class="btn btn-primary" style="height:40px;">Guardar</button>
+            <button onclick="impProbarConexion()" class="btn btn-info" style="height:40px;">Probar</button>
           </div>
         </details>
-        <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
-          Descarga y ejecuta estos .cmd/.ps1 en la PC donde está conectada la impresora. Se pedirá UAC (Administrador). Logs en C:\LibreriaPrintMonitor\logs.
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:14px;">
-        <div class="card-title">Escáner (solo dentro del sistema)</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-          <button onclick="scanOneClick()" class="btn btn-primary">CONFIGURAR ESCÁNER (1 clic)</button>
-          <button onclick="scanDoctorUI()" class="btn" style="background:#111827;color:#fff;">Ver diagnóstico</button>
-          <a href="installer/setup_escaner_fondo.cmd" download class="btn btn-info">Instalar capturador (misma PC)</a>
-        </div>
-        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
-          El escaneo funciona solo en modo Vendedor y en esta misma PC. Si escaneas fuera del navegador, se guarda en cola y se registra al volver al sistema.
-        </div>
-        <div id="scan-doctor-out" style="margin-top:10px;background:#0b1020;color:#e5e7eb;padding:10px;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;white-space:pre;overflow:auto;display:none;"></div>
       </div>
     </div>
 
@@ -1017,4 +1016,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260421ah'></script></body></html>
+<script type='module' src='app.js?v=20260421ai'></script></body></html>

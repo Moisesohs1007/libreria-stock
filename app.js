@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ah';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ah';
+import { db } from './firebase-config.js?v=20260421ai';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ai';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -1858,7 +1858,7 @@ function _outsideQueueEnabled() {
 
 function _outsideWarnOnce() {
   const now = Date.now();
-  if (_outsideWarnAt && (now - _outsideWarnAt) < 60000) return;
+  if (_outsideWarnAt && (now - _outsideWarnAt) < 600000) return;
   _outsideWarnAt = now;
   const samePc = "Para capturar fuera del navegador, el servicio local del escáner debe estar encendido en esta MISMA PC (127.0.0.1:7777).";
   const mixed = (location.protocol === "https:" ? "Si usas GitHub Pages (https), Chrome puede bloquear http://127.0.0.1. Solución: usar POS local http://127.0.0.1:8787/ o permitir 'Contenido no seguro'." : "");
@@ -2314,7 +2314,7 @@ window.impMostrarNotaInstalador = function() {
 };
 
 window.scanDoctorUI = async function() {
-  const out = document.getElementById("scan-doctor-out");
+  const out = document.getElementById("scan-doctor-out") || document.getElementById("vendor-setup-out");
   const lines = [];
   const show = () => {
     if (!out) return;
@@ -2365,7 +2365,7 @@ window.scanDoctorUI = async function() {
 };
 
 window.scanOneClick = async function() {
-  const out = document.getElementById("scan-doctor-out");
+  const out = document.getElementById("scan-doctor-out") || document.getElementById("vendor-setup-out");
   const lines = [];
   const show = () => {
     if (!out) return;
@@ -2411,6 +2411,109 @@ window.scanOneClick = async function() {
   const base = scanServiceBase();
   await testJson("ESCÁNER STATUS", base + "/status");
   await testJson("ESCÁNER PEEK", base + "/peek");
+  show();
+};
+
+window.vendorPcSetupOneClick = async function() {
+  const out = document.getElementById("vendor-setup-out");
+  const dl = document.getElementById("dl-pc-vendedor");
+  const lines = [];
+  const show = () => {
+    if (!out) return;
+    out.style.display = "block";
+    out.textContent = lines.join("\n");
+  };
+  const add = (s) => { lines.push(s); show(); };
+  const test = async (label, url) => {
+    add(`⏳ ${label}: ${url}`);
+    try {
+      const r = await fetch(url, { signal: _timeoutSignal(1800) });
+      const txt = await r.text();
+      add(`✅ ${label}: HTTP ${r.status}`);
+      if (txt) add(txt.slice(0, 300));
+      return { ok: r.ok, status: r.status, body: txt };
+    } catch (e) {
+      add(`❌ ${label}: ${e?.message || String(e)}`);
+      return { ok: false, status: 0, body: "" };
+    }
+  };
+
+  lines.length = 0;
+  add("=== PC Vendedor (1 clic) ===");
+  add(`Hora: ${new Date().toLocaleString("es-PE")}`);
+  add(`Protocol: ${location.protocol}`);
+  add("");
+  add("Este botón descarga un instalador único para esta PC (vendedor).");
+  add("Luego debes ejecutarlo como Administrador.");
+  add("");
+
+  try { localStorage.setItem("outside_queue_enabled", "1"); } catch {}
+  try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
+  try { localStorage.setItem("scan_autofocus", "0"); } catch {}
+  try { localStorage.setItem("scan_clean_inputs", "0"); } catch {}
+  try { localStorage.setItem("scan_debug", "0"); } catch {}
+
+  try {
+    const svcUrl = document.getElementById("imp-svc-url");
+    if (svcUrl && !svcUrl.value) svcUrl.value = "http://localhost:5056";
+  } catch {}
+
+  add("✅ Configuración aplicada:");
+  add("- Cola externa escáner: ON (solo vendedor)");
+  add("- FONDO: OFF");
+  add("- Autofocus: OFF");
+  add("- Limpieza inputs: OFF");
+  add("");
+
+  if (dl) {
+    add("⏬ Descargando instalador: setup_pc_vendedor.cmd");
+    try { dl.click(); } catch {}
+    add("1) Ejecuta el .cmd descargado como Administrador.");
+    add("2) Abre el sistema por: http://127.0.0.1:8787/");
+  } else {
+    add("❌ No se encontró el instalador en la página.");
+  }
+
+  add("");
+  add("Diagnóstico rápido (si ya está instalado):");
+  await test("POS 8787 (web)", "http://127.0.0.1:8787/");
+  await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
+  await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
+  show();
+};
+
+window.vendorPcDoctor = async function() {
+  const out = document.getElementById("vendor-setup-out");
+  const lines = [];
+  const show = () => {
+    if (!out) return;
+    out.style.display = "block";
+    out.textContent = lines.join("\n");
+  };
+  const add = (s) => { lines.push(s); show(); };
+  const test = async (label, url) => {
+    add(`⏳ ${label}: ${url}`);
+    try {
+      const r = await fetch(url, { signal: _timeoutSignal(1800) });
+      const txt = await r.text();
+      add(`✅ ${label}: HTTP ${r.status}`);
+      if (txt) add(txt.slice(0, 300));
+      return { ok: r.ok, status: r.status, body: txt };
+    } catch (e) {
+      add(`❌ ${label}: ${e?.message || String(e)}`);
+      return { ok: false, status: 0, body: "" };
+    }
+  };
+
+  lines.length = 0;
+  add("=== Diagnóstico PC Vendedor ===");
+  add(`Hora: ${new Date().toLocaleString("es-PE")}`);
+  add(`Protocol: ${location.protocol}`);
+  add("");
+  await test("POS 8787 (web)", "http://127.0.0.1:8787/");
+  await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
+  await test("ESCÁNER 7777 (peek)", "http://127.0.0.1:7777/peek");
+  await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
   show();
 };
 
