@@ -160,6 +160,7 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
   top:16px;
   right:16px;
   z-index:9998;
+  pointer-events:none;
   max-width:min(360px, calc(100vw - 32px));
   padding:12px 14px;
   border:1px solid var(--border);
