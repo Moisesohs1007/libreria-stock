@@ -115,7 +115,14 @@ class EscanerFiltroTotal:
                 self.ultimo_codigo = codigo
                 logging.info("ESCANER_CAPTURADO: %s", codigo)
                 with _Q_LOCK:
-                    _Q.append({"codigo": codigo, "at": time.time()})
+                    try:
+                        last = _Q[-1] if _Q else None
+                        if last and last.get("codigo") == codigo and (time.time() - float(last.get("at") or 0)) < 0.8:
+                            pass
+                        else:
+                            _Q.append({"codigo": codigo, "at": time.time()})
+                    except Exception:
+                        _Q.append({"codigo": codigo, "at": time.time()})
                 global _EV_SEQ, _EV_CODE
                 with _EV_COND:
                     _EV_SEQ += 1

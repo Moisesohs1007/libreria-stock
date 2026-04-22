@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ac';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ac';
+import { db } from './firebase-config.js?v=20260421ad';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ad';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -263,9 +263,13 @@ function activarVendedor(nombre) {
   iniciarListeners();
   if (window._impAfterLogin) window._impAfterLogin();
   _offlineFlush(true);
+  try { localStorage.setItem("scan_autofocus", "0"); } catch {}
+  try { localStorage.setItem("scan_clean_inputs", "0"); } catch {}
+  try { localStorage.setItem("scan_debug", "0"); } catch {}
   try { localStorage.setItem("outside_queue_enabled", "1"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
+  try { _outsideDrainNow?.(); } catch {}
 }
 
 window.cerrarSesion = function() {
@@ -948,7 +952,7 @@ function _scanAuditPush(e) {
 }
 
 const _scanDedupe = { code: "", at: 0 };
-const SCAN_DEDUPE_MS = 180;
+const SCAN_DEDUPE_MS = 2500;
 
 function setScannerDot(ok, mode) {
   if (rolActual !== "vendedor") return;
@@ -990,7 +994,7 @@ async function procesarCodigo(codigo, meta) {
     mostrarMensaje("⏳ Sin internet: venta guardada (se enviará al volver)", "warning");
     return true;
   }
-  if (_scanDedupe.code === codigo && (Date.now() - _scanDedupe.at) < SCAN_DEDUPE_MS) return;
+  if (_scanDedupe.code === codigo && (Date.now() - _scanDedupe.at) < SCAN_DEDUPE_MS) return true;
   _scanDedupe.code = codigo;
   _scanDedupe.at = Date.now();
   try {
