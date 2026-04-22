@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ae';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ae';
+import { db } from './firebase-config.js?v=20260421af';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421af';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -1847,7 +1847,7 @@ let _bgStreamBase = "";
 let _bgWarned = false;
 
 let _outsideInFlight = false;
-let _outsideWarned = false;
+let _outsideWarnAt = 0;
 
 function _outsideQueueEnabled() {
   if (!OUTSIDE_QUEUE_FEATURE) return false;
@@ -1857,8 +1857,9 @@ function _outsideQueueEnabled() {
 }
 
 function _outsideWarnOnce() {
-  if (_outsideWarned) return;
-  _outsideWarned = true;
+  const now = Date.now();
+  if (_outsideWarnAt && (now - _outsideWarnAt) < 60000) return;
+  _outsideWarnAt = now;
   const samePc = "Para capturar fuera del navegador, el servicio local del escáner debe estar encendido en esta MISMA PC (127.0.0.1:7777).";
   const mixed = (location.protocol === "https:" ? "Si usas GitHub Pages (https), Chrome puede bloquear http://127.0.0.1. Solución: usar POS local http://127.0.0.1:8787/ o permitir 'Contenido no seguro'." : "");
   mostrarMensaje(`⚠️ No se pudo leer la cola externa. ${samePc} ${mixed}`.trim(), "warning");
@@ -1869,7 +1870,6 @@ async function _outsideDrainNow() {
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
   if (!_outsideQueueEnabled()) return;
-  if (document.hidden) return;
   if (_outsideInFlight) return;
   _outsideInFlight = true;
   try {
@@ -1891,7 +1891,7 @@ async function _outsideDrainNow() {
 }
 
 window.addEventListener("focus", () => { try { _outsideDrainNow(); } catch {} });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { try { _outsideDrainNow(); } catch {} } });
+document.addEventListener("visibilitychange", () => { try { _outsideDrainNow(); } catch {} });
 setInterval(() => { try { _outsideDrainNow(); } catch {} }, 1800);
 
 function _bgWarnOnce() {
