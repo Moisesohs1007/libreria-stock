@@ -6,7 +6,9 @@ title Libreria - Setup PC Vendedor
 net session >nul 2>&1
 if not "%errorlevel%"=="0" (
   echo Solicitando permisos de Administrador...
+  echo Si esta ventana se cierra, aparecera otra ventana con permisos (UAC). Acepta el aviso.
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%ComSpec%' -ArgumentList '/c','\"\"%~f0\"\"' -Verb RunAs" >nul 2>nul
+  timeout /t 2 >nul
   exit /b 0
 )
 
@@ -27,6 +29,11 @@ echo Este instalador configura en esta PC:
 echo - POS local (web):        http://127.0.0.1:8787/
 echo - Capturador escaner:     http://127.0.0.1:7777/status
 echo - Conteo de impresiones:  http://127.0.0.1:5056/api/prints/health
+echo.
+echo Logs (si algo sale rojo):
+echo - POS:       C:\LibreriaPOS\logs\doctor_pos_local.log
+echo - Escaner:   C:\LibreriaScanner\logs\doctor_scanner.log
+echo - Impresion: C:\LibreriaPrintMonitor\logs\installer.log
 echo.
 
 call :Download "%ROOT_URL%/pos_local.ps1" "%P_POS%" || goto :Fail
@@ -87,6 +94,7 @@ echo.
 echo Recomendado:
 echo - Verifica Internet
 echo - Ejecuta este .cmd como Administrador
+echo - Abre los logs indicados arriba y copia el ultimo error
 echo.
 pause
 exit /b 1

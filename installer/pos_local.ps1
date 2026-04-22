@@ -44,29 +44,76 @@ function Stop-Port([int]$port) {
 }
 
 function Resolve-Python {
+  $cmdPython = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
   $candidates = @(
-    (Get-Command python.exe -ErrorAction SilentlyContinue).Source,
-    (Get-Command py.exe -ErrorAction SilentlyContinue).Source
-  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    "$InstallDir\\runtime\\python.exe",
+    $cmdPython
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
   if ($candidates.Count -gt 0) { return $candidates[0] }
   return $null
 }
 
+function Set-Tls {
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+  } catch {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+  }
+}
+
+function Download-File($url, $dst) {
+  Set-Tls
+  Write-LogLine "Descargando $url"
+  Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $dst
+}
+
+function Ensure-PythonRuntime {
+  $rt = "$InstallDir\\runtime"
+  Ensure-Dir $rt
+  $py = "$rt\\python.exe"
+  if (Test-Path -LiteralPath $py) {
+    Write-LogLine "Runtime Python embebido detectado."
+    return $py
+  }
+  $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "win32" }
+  $pyVer = "3.12.8"
+  $zipName = if ($arch -eq "amd64") { "python-$pyVer-embed-amd64.zip" } else { "python-$pyVer-embed-win32.zip" }
+  $url = "https://www.python.org/ftp/python/$pyVer/$zipName"
+  $zip = "$InstallDir\\python_embed_$arch.zip"
+  Download-File $url $zip
+  Write-LogLine "Extrayendo runtime Python..."
+  Expand-Archive -Path $zip -DestinationPath $rt -Force
+  $pth = Get-ChildItem -Path $rt -Filter "python*._pth" | Select-Object -First 1
+  if (-not $pth) { throw "PYTHON_PTH_NOT_FOUND" }
+  $pthPath = $pth.FullName
+  $content = Get-Content -Path $pthPath -ErrorAction Stop
+  $new = @()
+  foreach ($line in $content) {
+    if ($line -match "^\s*#\s*import\s+site\s*$") { $new += "import site"; continue }
+    $new += $line
+  }
+  if (-not ($new -contains "import site")) { $new += "import site" }
+  if (-not ($new -contains "Lib\site-packages")) { $new = @("Lib\site-packages") + $new }
+  Set-Content -Path $pthPath -Value $new -Encoding ASCII
+  $getPip = "$InstallDir\\get-pip.py"
+  Download-File "https://bootstrap.pypa.io/get-pip.py" $getPip
+  Write-LogLine "Instalando pip..."
+  $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
+  $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
+  & $py $getPip --no-warn-script-location | Out-Null
+  return $py
+}
+
 function Ensure-Dependencies([string]$py) {
   try {
-    & $py -c "import flask, flask_cors, pynput" 2>$null
+    & $py -c "import flask, flask_cors" 2>$null
     Write-LogLine "OK dependencias presentes."
     return
   } catch {}
   Write-LogLine "Instalando dependencias via pip..."
   & $py -m pip install --upgrade pip | Out-Null
-  & $py -m pip install flask flask-cors pynput | Out-Null
+  & $py -m pip install flask flask-cors | Out-Null
   Write-LogLine "OK dependencias instaladas."
-}
-
-function Download-File($url, $dst) {
-  Write-LogLine "Descargando $url"
-  Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $dst
 }
 
 $InstallDir = "C:\LibreriaPOS"
@@ -106,6 +153,7 @@ function Stop-Task {
 function Install-WebAssets {
   $base = "https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main"
   Download-File "$base/index.html" "$InstallDir\web\index.html"
+  Download-File "$base/style.css" "$InstallDir\web\style.css"
   Download-File "$base/app.js" "$InstallDir\web\app.js"
   Download-File "$base/firebase-config.js" "$InstallDir\web\firebase-config.js"
   Download-File "$base/scanner_utils.js" "$InstallDir\web\scanner_utils.js"
@@ -160,8 +208,7 @@ if ($Mode -eq "start") {
 if ($Mode -eq "install") {
   Stop-Task
   Stop-Port 8787
-  $PyExe = Resolve-Python
-  if (-not $PyExe) { Write-LogLine "ERROR: Python no encontrado"; throw "PYTHON_NOT_FOUND" }
+  $PyExe = Ensure-PythonRuntime
   Ensure-Dependencies $PyExe
   Install-ServerScript
   Install-WebAssets

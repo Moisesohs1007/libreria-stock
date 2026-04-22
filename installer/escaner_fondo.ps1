@@ -43,6 +43,19 @@ function Ensure-Dir($p) {
   if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
 }
 
+function Set-Tls {
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+  } catch {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+  }
+}
+
+function Download-File($url, $dst) {
+  Set-Tls
+  Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $dst
+}
+
 $InstallDir = "C:\LibreriaScanner"
 Ensure-Dir $InstallDir
 Ensure-Dir "$InstallDir\logs"
@@ -119,6 +132,45 @@ function Resolve-PythonW([string]$pyExe) {
   return $null
 }
 
+function Ensure-PythonRuntime {
+  $rt = "$InstallDir\\python"
+  Ensure-Dir $rt
+  $py = "$rt\\python.exe"
+  if (Test-Path -LiteralPath $py) {
+    Write-LogLine "Runtime Python embebido detectado."
+    return $py
+  }
+  $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "win32" }
+  $pyVer = "3.12.8"
+  $zipName = if ($arch -eq "amd64") { "python-$pyVer-embed-amd64.zip" } else { "python-$pyVer-embed-win32.zip" }
+  $url = "https://www.python.org/ftp/python/$pyVer/$zipName"
+  $zip = "$InstallDir\\python_embed_$arch.zip"
+  Write-LogLine "Descargando runtime Python: $url"
+  Download-File $url $zip
+  Write-LogLine "Extrayendo runtime Python..."
+  Expand-Archive -Path $zip -DestinationPath $rt -Force
+  $pth = Get-ChildItem -Path $rt -Filter "python*._pth" | Select-Object -First 1
+  if (-not $pth) { throw "PYTHON_PTH_NOT_FOUND" }
+  $pthPath = $pth.FullName
+  $content = Get-Content -Path $pthPath -ErrorAction Stop
+  $new = @()
+  foreach ($line in $content) {
+    if ($line -match "^\s*#\s*import\s+site\s*$") { $new += "import site"; continue }
+    $new += $line
+  }
+  if (-not ($new -contains "import site")) { $new += "import site" }
+  if (-not ($new -contains "Lib\\site-packages")) { $new = @("Lib\\site-packages") + $new }
+  Set-Content -Path $pthPath -Value $new -Encoding ASCII
+  $getPip = "$InstallDir\\get-pip.py"
+  Write-LogLine "Descargando get-pip.py"
+  Download-File "https://bootstrap.pypa.io/get-pip.py" $getPip
+  Write-LogLine "Instalando pip..."
+  $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
+  $env:PIP_NO_WARN_SCRIPT_LOCATION = "1"
+  & $py $getPip --no-warn-script-location | Out-Null
+  return $py
+}
+
 function Ensure-Dependencies([string]$py) {
   try {
     Write-LogLine "Verificando dependencias Python (flask, flask-cors, pynput)..."
@@ -149,7 +201,7 @@ function Install-ScannerScript {
   $dst = "$InstallDir\escaner_fondo.py"
   $url = "https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main/escaner_fondo.py"
   Write-LogLine "Descargando escaner_fondo.py -> $dst"
-  Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $dst
+  Download-File $url $dst
 }
 
 function Task-Exists {
@@ -236,11 +288,7 @@ if ($Mode -eq "install") {
   Stop-Port 7777
   Install-EmergencyUnblock
   Install-ScannerScript
-  $PyExe = Resolve-PythonExe
-  if (-not $PyExe) {
-    Write-LogLine "ERROR: Python no encontrado. Instala Python en esta PC (o configura el instalador avanzado)."
-    throw "PYTHON_NOT_FOUND"
-  }
+  $PyExe = Ensure-PythonRuntime
   $PyW = Resolve-PythonW $PyExe
   if (-not $PyW) { $PyW = $PyExe }
   Ensure-Dependencies $PyExe
