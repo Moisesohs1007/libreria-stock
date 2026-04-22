@@ -562,9 +562,10 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
           <button onclick="scanOneClick()" class="btn btn-primary">CONFIGURAR ESCÁNER (1 clic)</button>
           <button onclick="scanDoctorUI()" class="btn" style="background:#111827;color:#fff;">Ver diagnóstico</button>
+          <a href="installer/setup_escaner_fondo.cmd" download class="btn btn-info">Instalar capturador (misma PC)</a>
         </div>
         <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">
-          El escaneo funciona solo en modo Vendedor y en esta misma PC. El modo FONDO (fuera del sistema) está desactivado.
+          El escaneo funciona solo en modo Vendedor y en esta misma PC. Si escaneas fuera del navegador, se guarda en cola y se registra al volver al sistema.
         </div>
         <div id="scan-doctor-out" style="margin-top:10px;background:#0b1020;color:#e5e7eb;padding:10px;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;white-space:pre;overflow:auto;display:none;"></div>
       </div>
@@ -1016,4 +1017,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260421aa'></script></body></html>
+<script type='module' src='app.js?v=20260421ab'></script></body></html>

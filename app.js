@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421aa';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421aa';
+import { db } from './firebase-config.js?v=20260421ab';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ab';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -246,6 +246,7 @@ function activarAdmin() {
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display  = "block";
   iniciarListeners();
+  try { localStorage.setItem("outside_queue_enabled", "0"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
 }
@@ -262,6 +263,7 @@ function activarVendedor(nombre) {
   iniciarListeners();
   if (window._impAfterLogin) window._impAfterLogin();
   _offlineFlush(true);
+  try { localStorage.setItem("outside_queue_enabled", "1"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
 }
@@ -1816,11 +1818,57 @@ setInterval(() => {
 
 // Escáner de fondo
 const BG_SCANNER_FEATURE = false;
+const OUTSIDE_QUEUE_FEATURE = true;
 let _bgFailCount = 0;
 let _bgInFlight = false;
 let _bgStream = null;
 let _bgStreamBase = "";
 let _bgWarned = false;
+
+let _outsideInFlight = false;
+let _outsideWarned = false;
+
+function _outsideQueueEnabled() {
+  return OUTSIDE_QUEUE_FEATURE && localStorage.getItem("outside_queue_enabled") === "1";
+}
+
+function _outsideWarnOnce() {
+  if (_outsideWarned) return;
+  _outsideWarned = true;
+  const samePc = "Para capturar fuera del navegador, el servicio local del escáner debe estar encendido en esta MISMA PC (127.0.0.1:7777).";
+  const mixed = (location.protocol === "https:" ? "Si usas GitHub Pages (https), Chrome puede bloquear http://127.0.0.1. Solución: usar POS local http://127.0.0.1:8787/ o permitir 'Contenido no seguro'." : "");
+  mostrarMensaje(`⚠️ No se pudo leer la cola externa. ${samePc} ${mixed}`.trim(), "warning");
+}
+
+async function _outsideDrainNow() {
+  if (rolActual !== "vendedor") return;
+  const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
+  if (inLogin) return;
+  if (!_outsideQueueEnabled()) return;
+  if (document.hidden) return;
+  if (_outsideInFlight) return;
+  _outsideInFlight = true;
+  try {
+    const base = scanServiceBase();
+    const r = await fetch(base + "/drain?limit=80", { signal: _timeoutSignal(1800) });
+    if (!r.ok) throw new Error(String(r.status));
+    const d = await r.json();
+    const arr = Array.isArray(d?.codes) ? d.codes : [];
+    const codes = arr.map(x => (typeof x === "string" ? x : x?.codigo)).filter(Boolean);
+    if (!codes.length) return;
+    for (const c of codes) {
+      try { await procesarCodigo(c, { source: "outside_queue" }); } catch {}
+    }
+  } catch {
+    _outsideWarnOnce();
+  } finally {
+    _outsideInFlight = false;
+  }
+}
+
+window.addEventListener("focus", () => { try { _outsideDrainNow(); } catch {} });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { try { _outsideDrainNow(); } catch {} } });
+setInterval(() => { try { _outsideDrainNow(); } catch {} }, 1800);
 
 function _bgWarnOnce() {
   if (_bgWarned) return;
@@ -2253,6 +2301,7 @@ window.scanDoctorUI = async function() {
   add(`Protocol: ${location.protocol}`);
   add(`Autofocus: ${localStorage.getItem("scan_autofocus") === "1" ? "ON" : "OFF"}`);
   add(`CleanInputs: ${localStorage.getItem("scan_clean_inputs") === "1" ? "ON" : "OFF"}`);
+  add(`Cola externa: ${_outsideQueueEnabled() ? "ON" : "OFF"}`);
   try { add(`OfflineQueue: ${_offlineLoad().length}`); } catch {}
   add("");
   try {
@@ -2262,7 +2311,12 @@ window.scanDoctorUI = async function() {
   add("");
   if (!BG_SCANNER_FEATURE) add("FONDO: desactivado por configuración.");
   add("");
-  await test("LEGACY 7777 (opcional)", "http://127.0.0.1:7777/status");
+  const base = scanServiceBase();
+  add(`ScanBase: ${base}`);
+  add("");
+  await test("ESCÁNER STATUS", base + "/status");
+  add("");
+  await test("ESCÁNER PEEK", base + "/peek");
   show();
 };
 
@@ -2300,15 +2354,19 @@ window.scanOneClick = async function() {
   try { localStorage.setItem("scan_autofocus", "0"); } catch {}
   try { localStorage.setItem("scan_clean_inputs", "0"); } catch {}
   try { localStorage.setItem("scan_debug", "0"); } catch {}
+  try { localStorage.setItem("outside_queue_enabled", "1"); } catch {}
   try { setBgBadge(false); } catch {}
   add("✅ Configuración aplicada:");
   add("- Escáner: solo dentro del sistema (vendedor)");
   add("- FONDO: OFF");
+  add("- Cola externa: ON (captura fuera y registra al volver)");
   add("- Autofocus: OFF");
   add("- Limpieza inputs: OFF");
   add("");
-  add("Opcional: si antes instalaste el escáner legacy (7777), desactívalo para que NO funcione fuera.");
-  await testJson("LEGACY 7777 (opcional)", "http://127.0.0.1:7777/status");
+  add("Requisito: servicio local del escáner encendido en esta PC (127.0.0.1).");
+  const base = scanServiceBase();
+  await testJson("ESCÁNER STATUS", base + "/status");
+  await testJson("ESCÁNER PEEK", base + "/peek");
   show();
 };
 

@@ -3,7 +3,8 @@ import time
 import threading
 import os
 import logging
-from flask import Flask, jsonify, Response, stream_with_context
+from collections import deque
+from flask import Flask, jsonify, Response, stream_with_context, request
 from flask_cors import CORS
 from pynput import keyboard
 
@@ -32,6 +33,9 @@ _EV_LOCK = threading.Lock()
 _EV_COND = threading.Condition(_EV_LOCK)
 _EV_SEQ = 0
 _EV_CODE = None
+
+_Q_LOCK = threading.Lock()
+_Q = deque(maxlen=250)
 
 class EscanerFiltroTotal:
     def __init__(self):
@@ -110,6 +114,8 @@ class EscanerFiltroTotal:
             if self._looks_like_scan(codigo) and len(codigo) >= 3:
                 self.ultimo_codigo = codigo
                 logging.info("ESCANER_CAPTURADO: %s", codigo)
+                with _Q_LOCK:
+                    _Q.append({"codigo": codigo, "at": time.time()})
                 global _EV_SEQ, _EV_CODE
                 with _EV_COND:
                     _EV_SEQ += 1
@@ -186,7 +192,7 @@ def root():
     return jsonify({
         "ok": True,
         "service": "escaner_fondo",
-        "endpoints": ["/poll", "/status", "/health", "/stream"],
+        "endpoints": ["/poll", "/drain", "/peek", "/clear", "/status", "/health", "/stream"],
         "log": _LOG_PATH,
         "suppress": LISTENER_SUPPRESS,
     })
@@ -197,6 +203,37 @@ def poll():
         res = filtro.ultimo_codigo
         filtro.ultimo_codigo = None
     return jsonify({"codigo": res})
+
+@app.route("/peek", strict_slashes=False)
+def peek():
+    with _Q_LOCK:
+        items = list(_Q)
+    return jsonify({"codes": items, "count": len(items)})
+
+@app.route("/drain", strict_slashes=False)
+def drain():
+    limit = 250
+    try:
+        raw = request.args.get("limit")
+        if raw:
+            n = int(raw)
+            if 1 <= n <= 250:
+                limit = n
+    except Exception:
+        pass
+    out = []
+    with _Q_LOCK:
+        while _Q and len(out) < limit:
+            out.append(_Q.popleft())
+    return jsonify({"codes": out, "count": len(out)})
+
+@app.route("/clear", strict_slashes=False)
+def clear():
+    with _Q_LOCK:
+        _Q.clear()
+    with filtro.lock:
+        filtro.ultimo_codigo = None
+    return jsonify({"ok": True})
 
 @app.route("/stream", strict_slashes=False)
 def stream():
@@ -219,7 +256,9 @@ def stream():
 
 @app.route("/status", strict_slashes=False)
 def status():
-    return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else "", "suppress": LISTENER_SUPPRESS})
+    with _Q_LOCK:
+        qlen = len(_Q)
+    return jsonify({"activo": True, "buffer": filtro.buffer if filtro.es_escaneo_activo else "", "suppress": LISTENER_SUPPRESS, "queue": qlen})
 
 @app.route("/health", strict_slashes=False)
 def health():
@@ -234,7 +273,7 @@ if __name__ == "__main__":
     
     logging.info("INICIANDO_ESCANER_FONDO puerto=7777 script=%s cwd=%s log=%s suppress=%s", __file__, os.getcwd(), _LOG_PATH, LISTENER_SUPPRESS)
     try:
-        app.run(host="127.0.0.1", port=7777, debug=False)
+        app.run(host="127.0.0.1", port=7777, debug=False, threaded=True)
     except Exception:
         logging.exception("ERROR_FLASK_RUN")
         raise
