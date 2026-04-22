@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421w';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421w';
+import { db } from './firebase-config.js?v=20260421aa';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421aa';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -95,6 +95,8 @@ function mostrarMensaje(texto, tipo="ok") {
 }
 window.mostrarMensaje = mostrarMensaje;
 
+try { localStorage.setItem("scan_autofocus", "0"); } catch {}
+
 const _OFFLINE_QUEUE_KEY = "offline_sales_queue_v1";
 const _OFFLINE_FAILED_KEY = "offline_sales_failed_v1";
 const _OFFLINE_SYNC = { running: false, lastAt: 0 };
@@ -127,6 +129,7 @@ function _offlineFailPush(item, err) {
 }
 
 function _offlineEnqueue(code, meta) {
+  if (rolActual !== "vendedor") return;
   const codigo = sanitizeScanCode(code);
   if (!codigo) return;
   const arr = _offlineLoad();
@@ -157,7 +160,7 @@ function _shouldQueueError(e) {
 
 async function _offlineFlush(force) {
   if (_OFFLINE_SYNC.running) return;
-  if (!rolActual) return;
+  if (rolActual !== "vendedor") return;
   if (!navigator.onLine) return;
   if (!force && (Date.now() - _OFFLINE_SYNC.lastAt) < 5000) return;
   const arr = _offlineLoad();
@@ -242,11 +245,9 @@ function activarAdmin() {
   document.getElementById("login-screen").style.display  = "none";
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display  = "block";
-  if (scannerInput) scannerInput.focus();
   iniciarListeners();
-  _offlineFlush(true);
-  try { if (localStorage.getItem("bg_scanner_enabled") !== "0") localStorage.setItem("bg_scanner_enabled", "1"); } catch {}
-  try { _bgStartStream(); } catch {}
+  try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
+  try { _bgStopStream?.(); } catch {}
 }
 
 function activarVendedor(nombre) {
@@ -261,13 +262,17 @@ function activarVendedor(nombre) {
   iniciarListeners();
   if (window._impAfterLogin) window._impAfterLogin();
   _offlineFlush(true);
-  try { if (localStorage.getItem("bg_scanner_enabled") !== "0") localStorage.setItem("bg_scanner_enabled", "1"); } catch {}
-  try { _bgStartStream(); } catch {}
+  try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
+  try { _bgStopStream?.(); } catch {}
 }
 
 window.cerrarSesion = function() {
   borrarSesion();
   rolActual = null;
+  try { bufferEscaner = ""; } catch {}
+  try { if (timerEscaner) clearTimeout(timerEscaner); } catch {}
+  try { timerEscaner = null; } catch {}
+  try { _resetScanTiming?.(); } catch {}
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display    = "none";
   document.getElementById("login-screen").style.display    = "flex";
@@ -944,7 +949,8 @@ const _scanDedupe = { code: "", at: 0 };
 const SCAN_DEDUPE_MS = 180;
 
 function setScannerDot(ok, mode) {
-  const id = rolActual === "vendedor" ? "dot-v" : "dot-a";
+  if (rolActual !== "vendedor") return;
+  const id = "dot-v";
   const dot = document.getElementById(id);
   if (!dot) return;
   if (!ok) {
@@ -962,6 +968,7 @@ function setBgBadge(visible) {
 }
 
 async function procesarCodigo(codigo, meta) {
+  if (rolActual !== "vendedor") return false;
 
   const source = meta?.source || "";
   const started = performance.now();
@@ -1082,6 +1089,14 @@ async function procesarCodigo(codigo, meta) {
 }
 
 function finalizarEscaneo() {
+  if (rolActual !== "vendedor") {
+    bufferEscaner = "";
+    if (scannerInput) scannerInput.value = "";
+    if (timerEscaner) clearTimeout(timerEscaner);
+    timerEscaner = null;
+    _resetScanTiming();
+    return;
+  }
   const c = bufferEscaner;
   const cleaned = sanitizeScanCode(c);
   const fromScannerFocus = document.activeElement === scannerInput;
@@ -1117,6 +1132,7 @@ function finalizarEscaneo() {
 }
 
 function alimentarEscaneo(ch, source) {
+  if (rolActual !== "vendedor") return;
   bufferEscaner += ch;
   const now = Date.now();
   if (!_scanTiming.source) _scanTiming.source = source || "doc";
@@ -1129,22 +1145,22 @@ function alimentarEscaneo(ch, source) {
 }
 
 function shouldForceScannerFocus() {
-  if (!rolActual) return false;
+  if (rolActual !== "vendedor") return false;
+  if (localStorage.getItem("scan_autofocus") !== "1") return false;
   if (document.querySelector(".modal-overlay.active")) return false;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return false;
-  if (rolActual === "vendedor") return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
-  return document.getElementById("tab-ventas")?.classList?.contains("active") === true;
+  return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
 }
 
 function isSalesContext() {
-  if (!rolActual) return false;
-  if (rolActual === "vendedor") return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
-  return document.getElementById("tab-ventas")?.classList?.contains("active") === true;
+  if (rolActual !== "vendedor") return false;
+  return document.getElementById("vtab-ventas")?.classList?.contains("active") === true;
 }
 
 if (scannerInput) {
   scannerInput.addEventListener("keydown", e => {
+    if (rolActual !== "vendedor") return;
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       finalizarEscaneo();
@@ -1173,12 +1189,14 @@ if (scannerInput) {
   });
 
   scannerInput.addEventListener("blur", () => {
-    if (shouldForceScannerFocus()) setTimeout(() => { try { scannerInput.focus(); } catch {} }, 80);
+    if (localStorage.getItem("scan_autofocus") === "1" && shouldForceScannerFocus()) {
+      setTimeout(() => { try { scannerInput.focus(); } catch {} }, 80);
+    }
   });
 }
 
 document.addEventListener("keydown", e => {
-  if (!rolActual) return;
+  if (rolActual !== "vendedor") return;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
   const ae = document.activeElement;
@@ -1189,6 +1207,11 @@ document.addEventListener("keydown", e => {
       e.preventDefault();
       e.stopPropagation();
       finalizarEscaneo();
+    } else if (bufferEscaner) {
+      bufferEscaner = "";
+      if (timerEscaner) clearTimeout(timerEscaner);
+      timerEscaner = null;
+      _resetScanTiming();
     }
     return;
   }
@@ -1211,7 +1234,7 @@ document.addEventListener("keydown", e => {
 });
 
 document.addEventListener("input", e => {
-  if (!rolActual) return;
+  if (rolActual !== "vendedor") return;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
   if (localStorage.getItem("scan_clean_inputs") !== "1") return;
@@ -1770,20 +1793,12 @@ window.generarReporteDeudas = function() { return _generarReporte("a"); };
 window.generarReporteDeudasV = function() { return _generarReporte("v"); };
 
 window.ayudaSeguridad = () => {
-  const bg = localStorage.getItem("bg_scanner_enabled") === "1";
-  const msg =
-    "Escáner de códigos:\n\n" +
-    "1) Modo normal (web): funciona cuando esta pestaña está abierta.\n" +
-    "2) Modo fondo (recomendado): funciona aunque otra app esté activa.\n\n" +
-    "Para modo fondo:\n" +
-    "- Ejecuta escaner_fondo.py / instalador del escáner en la PC.\n" +
-    "- En Chrome: icono candado → Configuración del sitio → permitir 'Contenido no seguro'.\n\n" +
-    `Estado actual: ${bg ? "FONDO habilitado" : "FONDO deshabilitado"}\n\n` +
-    "¿Quieres alternarlo ahora?";
-  const ok = confirm(msg);
-  if (!ok) return;
-  if (bg) window.deshabilitarEscanerFondo();
-  else window.habilitarEscanerFondo();
+  alert(
+    "Escáner (Vendedor):\n\n" +
+    "- El escaneo se usa solo dentro de este sistema y en esta misma PC.\n" +
+    "- El modo FONDO está desactivado para evitar problemas.\n\n" +
+    "Si el lector escribe LIB-... en una celda, es normal. La venta igual debe registrarse."
+  );
 };
 
 // Foco automático
@@ -1800,6 +1815,7 @@ setInterval(() => {
 }, 2500);
 
 // Escáner de fondo
+const BG_SCANNER_FEATURE = false;
 let _bgFailCount = 0;
 let _bgInFlight = false;
 let _bgStream = null;
@@ -1809,7 +1825,9 @@ let _bgWarned = false;
 function _bgWarnOnce() {
   if (_bgWarned) return;
   _bgWarned = true;
-  mostrarMensaje("⚠️ FONDO no disponible. Activa 'Contenido no seguro' y verifica servicio 7777.", "warning");
+  const samePc = "FONDO solo funciona si esta web está abierta en la MISMA PC donde corre el servicio del escáner (127.0.0.1).";
+  const mixed = (location.protocol === "https:" ? "Si usas GitHub Pages (https), Chrome puede bloquear http://127.0.0.1. Solución segura: usar POS local http://127.0.0.1:8787." : "");
+  mostrarMensaje(`⚠️ FONDO no disponible. ${samePc} ${mixed}`.trim(), "warning");
 }
 
 function _bgStopStream() {
@@ -1819,6 +1837,7 @@ function _bgStopStream() {
 }
 
 function _bgStartStream() {
+  if (!BG_SCANNER_FEATURE) return;
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") return;
   const base = scanServiceBase();
@@ -1848,6 +1867,7 @@ function _bgStartStream() {
 }
 
 setInterval(async () => {
+  if (!BG_SCANNER_FEATURE) return;
   if (!rolActual) return;
   if (localStorage.getItem("bg_scanner_enabled") !== "1") { _bgStopStream(); return; }
   _bgStartStream();
@@ -1873,6 +1893,12 @@ setInterval(async () => {
 }, 900);
 
 window.habilitarEscanerFondo = async function() {
+  if (!BG_SCANNER_FEATURE) {
+    try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
+    try { setBgBadge(false); } catch {}
+    mostrarMensaje("ℹ️ Modo FONDO desactivado (solo se escanea dentro del sistema)", "warning");
+    return;
+  }
   try {
     const base = scanServiceBase();
     const r = await fetch(base + "/status", { signal: _timeoutSignal(1500) });
@@ -2219,35 +2245,24 @@ window.scanDoctorUI = async function() {
   };
 
   lines.length = 0;
-  const base = scanServiceBase();
   add("=== Doctor Escáner ===");
   add(`Hora: ${new Date().toLocaleString("es-PE")}`);
   add(`Rol: ${rolActual || "—"} | Usuario: ${(nombreVendedor || (rolActual === "admin" ? "Admin" : "")) || "—"}`);
-  add(`FONDO: ${localStorage.getItem("bg_scanner_enabled") === "1" ? "ON" : "OFF"}`);
+  add("Modo: SOLO VENDEDOR (misma PC, dentro del sistema)");
   add(`Audit: ${localStorage.getItem("scan_audit") === "1" ? "ON" : "OFF"}`);
   add(`Protocol: ${location.protocol}`);
-  add(`ScanBase: ${base}`);
+  add(`Autofocus: ${localStorage.getItem("scan_autofocus") === "1" ? "ON" : "OFF"}`);
+  add(`CleanInputs: ${localStorage.getItem("scan_clean_inputs") === "1" ? "ON" : "OFF"}`);
+  try { add(`OfflineQueue: ${_offlineLoad().length}`); } catch {}
   add("");
   try {
     const errs = JSON.parse(localStorage.getItem("runtime_errors") || "[]");
     if (errs.length) add("Runtime errors (últimos): " + JSON.stringify(errs.slice(-3)));
   } catch {}
   add("");
-  const s = await test("STATUS", base + "/status");
+  if (!BG_SCANNER_FEATURE) add("FONDO: desactivado por configuración.");
   add("");
-  const p = await test("POLL", base + "/poll");
-  add("");
-  await test("HEALTH (opcional)", base + "/health");
-  add("");
-
-  if (s.ok && p.ok) {
-    add("RESULTADO: ✅ El servicio del escáner está activo en esta PC.");
-    if (location.protocol === "https:" && base.startsWith("http://")) add("Nota: si estás en https, debes permitir 'Contenido no seguro' para acceder a " + base + ".");
-    add("Si no funciona en la web: habilita FONDO en el indicador ESCÁNER.");
-  } else {
-    add("RESULTADO: ❌ El servicio del escáner NO responde correctamente en esta PC.");
-    add("Solución: descarga y ejecuta el instalador del escáner (setup_escaner_fondo.cmd) como Administrador.");
-  }
+  await test("LEGACY 7777 (opcional)", "http://127.0.0.1:7777/status");
   show();
 };
 
@@ -2273,63 +2288,27 @@ window.scanOneClick = async function() {
       return { ok: false, status: 0, body: "" };
     }
   };
-  const download = (href) => {
-    try {
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = "";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      return true;
-    } catch {
-      return false;
-    }
-  };
 
   lines.length = 0;
-  add("=== Arreglo de Escáner (1 clic) ===");
+  add("=== Escáner (1 clic) ===");
   add(`Hora: ${new Date().toLocaleString("es-PE")}`);
   add(`Protocol: ${location.protocol}`);
   add("");
 
-  const candidates = [];
-  const base0 = scanServiceBase();
-  candidates.push(base0);
-  if (base0 !== "http://127.0.0.1:8787") candidates.push("http://127.0.0.1:8787");
-  if (base0 !== "http://127.0.0.1:7777") candidates.push("http://127.0.0.1:7777");
-
-  let okBase = "";
-  for (const b of candidates) {
-    add("");
-    add("Probando base: " + b);
-    const s = await testJson("STATUS", b + "/status");
-    const p = await testJson("POLL", b + "/poll");
-    if (s.ok && p.ok) { okBase = b; break; }
-  }
-
-  if (okBase) {
-    add("");
-    add("✅ OK: servicio detectado en " + okBase);
-    localStorage.setItem("scan_svc_base", okBase);
-    localStorage.setItem("bg_scanner_enabled", "1");
-    try { setBgBadge(true); } catch {}
-    try { setScannerDot(true, "bg"); } catch {}
-    add("✅ FONDO activado en este navegador.");
-    add("Siguiente: escanea en Word/WhatsApp (con la web abierta) y se debe registrar la venta.");
-    return;
-  }
-
+  try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
+  try { localStorage.removeItem("scan_svc_base"); } catch {}
+  try { localStorage.setItem("scan_autofocus", "0"); } catch {}
+  try { localStorage.setItem("scan_clean_inputs", "0"); } catch {}
+  try { localStorage.setItem("scan_debug", "0"); } catch {}
+  try { setBgBadge(false); } catch {}
+  add("✅ Configuración aplicada:");
+  add("- Escáner: solo dentro del sistema (vendedor)");
+  add("- FONDO: OFF");
+  add("- Autofocus: OFF");
+  add("- Limpieza inputs: OFF");
   add("");
-  add("❌ No se detectó ningún servicio local de escáner.");
-  add("Acción automática: descargando instalador recomendado (POS Local).");
-  const ok1 = download("installer/setup_pos_local.cmd");
-  add(ok1 ? "✅ Descarga iniciada: installer/setup_pos_local.cmd" : "❌ No se pudo iniciar descarga automática. Descarga manual: installer/setup_pos_local.cmd");
-  add("Ejecuta el .cmd como Administrador en esta PC y luego abre: http://127.0.0.1:8787/");
-  add("");
-  add("Alternativa (legacy 7777): instalador del escáner en fondo.");
-  const ok2 = download("installer/setup_escaner_fondo.cmd");
-  add(ok2 ? "✅ Descarga iniciada: installer/setup_escaner_fondo.cmd" : "❌ Descarga manual: installer/setup_escaner_fondo.cmd");
+  add("Opcional: si antes instalaste el escáner legacy (7777), desactívalo para que NO funcione fuera.");
+  await testJson("LEGACY 7777 (opcional)", "http://127.0.0.1:7777/status");
   show();
 };
 
