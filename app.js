@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ag';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ag';
+import { db } from './firebase-config.js?v=20260421ah';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ah';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -2080,7 +2080,7 @@ function impSelectedValues(selId) {
 
 async function impFetchJson(path, params) {
   const url = `${impCfg.url}${path}${impQs(params)}`;
-  const r = await fetch(url, { headers: impHeaders() });
+  const r = await fetch(url, { headers: impHeaders(), signal: _timeoutSignal(5000) });
   if (!r.ok) throw new Error(String(r.status));
   return await r.json();
 }
@@ -2097,6 +2097,13 @@ function impSetConn(ok, text) {
   const st = document.getElementById("imp-estado");
   if (dot) dot.style.background = ok ? "#16a34a" : "#ef4444";
   if (st) st.textContent = text || (ok ? "conectado" : "sin conexión");
+}
+
+function impSetConnVendor(ok) {
+  const vSvc = document.getElementById("v-imp-svc");
+  if (!vSvc) return;
+  const base = (impCfg.url || "").trim() || "http://localhost:5056";
+  vSvc.textContent = ok ? base : "sin conexión";
 }
 
 function impRenderTotals(totals) {
@@ -2527,9 +2534,27 @@ window._impOnTab = function(tabId) {
 window._impAfterLogin = function() {
   impLoadCfg();
   impConnectSocket();
+  (async () => {
+    try {
+      await impFetchJson("/api/prints/health");
+      impSetConnVendor(true);
+    } catch {
+      impSetConnVendor(false);
+    }
+  })();
   impUpdateVendorWidget();
   clearInterval(window._impVendorTimer);
-  window._impVendorTimer = setInterval(() => { impUpdateVendorWidget().catch(() => {}); }, 30000);
+  window._impVendorTimer = setInterval(() => {
+    (async () => {
+      try {
+        await impFetchJson("/api/prints/health");
+        impSetConnVendor(true);
+      } catch {
+        impSetConnVendor(false);
+      }
+    })();
+    impUpdateVendorWidget().catch(() => {});
+  }, 30000);
 };
 
 impLoadCfg();
