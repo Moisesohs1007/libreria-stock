@@ -117,7 +117,7 @@ class EscanerFiltroTotal:
                 with _Q_LOCK:
                     try:
                         last = _Q[-1] if _Q else None
-                        if last and last.get("codigo") == codigo and (time.time() - float(last.get("at") or 0)) < 0.8:
+                        if last and last.get("codigo") == codigo and (time.time() - float(last.get("at") or 0)) < 0.25:
                             pass
                         else:
                             _Q.append({"codigo": codigo, "at": time.time()})
