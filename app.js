@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421ad';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ad';
+import { db } from './firebase-config.js?v=20260421ae';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421ae';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -952,7 +952,18 @@ function _scanAuditPush(e) {
 }
 
 const _scanDedupe = { code: "", at: 0 };
-const SCAN_DEDUPE_MS = 2500;
+const SCAN_DEDUPE_MS = 180;
+const _outsideWebDedupe = { winMs: 5000, max: 200 };
+const _recentWebCodes = new Map();
+function _touchRecentWebCode(code) {
+  const now = Date.now();
+  _recentWebCodes.set(code, now);
+  if (_recentWebCodes.size <= _outsideWebDedupe.max) return;
+  for (const [k, t] of _recentWebCodes) {
+    if ((now - t) > _outsideWebDedupe.winMs || _recentWebCodes.size > _outsideWebDedupe.max) _recentWebCodes.delete(k);
+    if (_recentWebCodes.size <= _outsideWebDedupe.max) break;
+  }
+}
 
 function setScannerDot(ok, mode) {
   if (rolActual !== "vendedor") return;
@@ -980,6 +991,12 @@ async function procesarCodigo(codigo, meta) {
   const started = performance.now();
   codigo = sanitizeScanCode(codigo);
   if (!codigo) return false;
+  if (source === "outside_queue") {
+    const t = _recentWebCodes.get(codigo);
+    if (t && (Date.now() - t) < _outsideWebDedupe.winMs) return true;
+  } else {
+    _touchRecentWebCode(codigo);
+  }
   if (!meta?.offlineReplay && (!todosLosProductos || !todosLosProductos.length) && (_productoIndex?.size || 0) === 0 && typeof window._cargarProductosOnce === "function" && !meta?._retriedLoad) {
     mostrarMensaje("⏳ Cargando productos... vuelve a escanear en 2s", "warning");
     _enqueuePendingScan(codigo, { ...(meta || {}), _retriedLoad: true });
@@ -1833,7 +1850,10 @@ let _outsideInFlight = false;
 let _outsideWarned = false;
 
 function _outsideQueueEnabled() {
-  return OUTSIDE_QUEUE_FEATURE && localStorage.getItem("outside_queue_enabled") === "1";
+  if (!OUTSIDE_QUEUE_FEATURE) return false;
+  const v = localStorage.getItem("outside_queue_enabled");
+  if (v === "0") return false;
+  return rolActual === "vendedor";
 }
 
 function _outsideWarnOnce() {
