@@ -7,8 +7,8 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260421aj';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260421aj';
+import { db } from './firebase-config.js?v=20260422a';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260422a';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction
@@ -2480,9 +2480,18 @@ window.vendorPcSetupOneClick = async function() {
 
   add("");
   add("Diagnóstico rápido (si ya está instalado):");
-  await test("POS 8787 (web)", "http://127.0.0.1:8787/");
-  await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
-  await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
+  if (location.protocol === "https:") {
+    add("ℹ️ Estás en https (GitHub Pages). El navegador puede bloquear pruebas a http://127.0.0.1 y por eso salen timeouts aquí.");
+    add("Abre estas URLs manualmente en esta PC:");
+    add("- POS: http://127.0.0.1:8787/");
+    add("- Escáner: http://127.0.0.1:7777/status");
+    add("- Impresiones: http://127.0.0.1:5056/api/prints/health");
+    add("Luego entra al POS local (http://127.0.0.1:8787/) y ahí sí el diagnóstico funcionará sin bloqueos.");
+  } else {
+    await test("POS 8787 (web)", "http://127.0.0.1:8787/");
+    await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
+    await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
+  }
   show();
 };
 
@@ -2518,10 +2527,19 @@ window.vendorPcDoctor = async function() {
   add(`Hora: ${new Date().toLocaleString("es-PE")}`);
   add(`Protocol: ${location.protocol}`);
   add("");
-  await test("POS 8787 (web)", "http://127.0.0.1:8787/");
-  await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
-  await test("ESCÁNER 7777 (peek)", "http://127.0.0.1:7777/peek");
-  await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
+  if (location.protocol === "https:") {
+    add("ℹ️ En https, el navegador puede bloquear pruebas a http://127.0.0.1 desde esta página.");
+    add("Usa el POS local (http://127.0.0.1:8787/) para diagnóstico o abre las URLs manualmente:");
+    add("- POS: http://127.0.0.1:8787/");
+    add("- Escáner: http://127.0.0.1:7777/status");
+    add("- Escáner (peek): http://127.0.0.1:7777/peek");
+    add("- Impresiones: http://127.0.0.1:5056/api/prints/health");
+  } else {
+    await test("POS 8787 (web)", "http://127.0.0.1:8787/");
+    await test("ESCÁNER 7777 (status)", "http://127.0.0.1:7777/status");
+    await test("ESCÁNER 7777 (peek)", "http://127.0.0.1:7777/peek");
+    await test("IMPRESIONES 5056 (health)", "http://127.0.0.1:5056/api/prints/health");
+  }
   show();
 };
 
