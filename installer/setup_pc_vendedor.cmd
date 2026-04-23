@@ -3,6 +3,7 @@ setlocal EnableExtensions
 
 title Libreria - Setup PC Vendedor
 
+set "SETUP_VER=20260422e"
 set "DL_DIR=%TEMP%\LibreriaInstallerAll"
 if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
 set "SETUP_LOG=%DL_DIR%\setup_pc_vendedor.log"
@@ -30,6 +31,8 @@ echo.
 echo ============================================
 echo  LIBRERIA - SETUP PC VENDEDOR (1 clic)
 echo ============================================
+echo.
+echo Version: %SETUP_VER%
 echo.
 echo Este instalador configura en esta PC:
 echo - POS local (web):        http://127.0.0.1:8787/
