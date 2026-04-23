@@ -5,7 +5,7 @@ title Libreria - Setup PC Vendedor
 
 set "DL_DIR=%TEMP%\LibreriaInstallerAll"
 if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
-set "LOG=%DL_DIR%\setup_pc_vendedor.log"
+set "SETUP_LOG=%DL_DIR%\setup_pc_vendedor.log"
 
 net session >nul 2>&1
 if not "%errorlevel%"=="0" (
@@ -20,11 +20,11 @@ set "P_POS=%DL_DIR%\pos_local.ps1"
 set "P_SCANNER=%DL_DIR%\escaner_fondo.ps1"
 set "P_PRINTS=%DL_DIR%\conteo_impresiones.ps1"
 
-echo.>>"%LOG%"
-echo ============================================>>"%LOG%"
-echo  SETUP PC VENDEDOR - LOG>>"%LOG%"
-echo  %DATE% %TIME%>>"%LOG%"
-echo ============================================>>"%LOG%"
+echo.>>"%SETUP_LOG%"
+echo ============================================>>"%SETUP_LOG%"
+echo  SETUP PC VENDEDOR - LOG>>"%SETUP_LOG%"
+echo  %DATE% %TIME%>>"%SETUP_LOG%"
+echo ============================================>>"%SETUP_LOG%"
 
 echo.
 echo ============================================
@@ -41,7 +41,7 @@ echo - POS:       C:\LibreriaPOS\logs\doctor_pos_local.log
 echo - Escaner:   C:\LibreriaScanner\logs\doctor_scanner.log
 echo - Impresion: C:\LibreriaPrintMonitor\logs\installer.log
 echo.
-echo Log instalador: %LOG%
+echo Log instalador: %SETUP_LOG%
 echo.
 echo Nota: si Windows SmartScreen bloquea el .cmd: clic en "Mas informacion" -> "Ejecutar de todas formas".
 echo.
@@ -71,25 +71,25 @@ exit /b 0
 set "URL=%~1"
 set "OUT=%~2"
 echo Descargando: %URL%
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try{ [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13 } catch { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 }; Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -OutFile '%OUT%'" >>"%LOG%" 2>>&1 || exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$null=[scriptblock]::Create((Get-Content -Raw '%OUT%'))" >>"%LOG%" 2>>&1 || exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try{ [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13 } catch { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 }; Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -OutFile '%OUT%'" >>"%SETUP_LOG%" 2>&1 || exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$null=[scriptblock]::Create((Get-Content -Raw '%OUT%'))" >>"%SETUP_LOG%" 2>&1 || exit /b 1
 exit /b 0
 
 :RunPs
 set "PS1=%~1"
 set "MODE=%~2"
 set "LABEL=%~3"
-set "LOG=%~4"
+set "STEP_LOG=%~4"
 echo.
 echo ---- %LABEL% ----
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode %MODE% >>"%LOG%" 2>>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode %MODE% >>"%SETUP_LOG%" 2>&1
 set "EC=%errorlevel%"
 if not "%EC%"=="0" (
   echo.
   echo [ERROR] Fallo: %LABEL% (codigo %EC%)
-  echo Revisa log: %LOG%
+  echo Revisa log: %STEP_LOG%
   echo.
-  if exist "%LOG%" start "" notepad "%LOG%" >nul 2>nul
+  if exist "%SETUP_LOG%" start "" notepad "%SETUP_LOG%" >nul 2>nul
   exit /b %EC%
 )
 exit /b 0
@@ -106,9 +106,9 @@ echo Recomendado:
 echo - Verifica Internet
 echo - Ejecuta este .cmd como Administrador
 echo - Abre los logs indicados arriba y copia el ultimo error
-echo - Log instalador: %DL_DIR%\setup_pc_vendedor.log
+echo - Log instalador: %SETUP_LOG%
 echo.
-if exist "%DL_DIR%\setup_pc_vendedor.log" start "" notepad "%DL_DIR%\setup_pc_vendedor.log" >nul 2>nul
+if exist "%SETUP_LOG%" start "" notepad "%SETUP_LOG%" >nul 2>nul
 pause
 exit /b 1
 
