@@ -244,20 +244,40 @@ function Write-RunScript {
 function Install-Task {
   param([string]$Root)
   $task = "LibreriaPrintMonitor"
-  $cmd = "cmd /c `"`"$Root\run_service.cmd`"`""
-  & schtasks /delete /tn $task /f 2>$null | Out-Null
-  $r = & schtasks /create /f /sc onlogon /ru SYSTEM /rl HIGHEST /delay 0000:30 /tn $task /tr $cmd 2>&1
+  $cmdExe = Join-Path $env:WINDIR "System32\cmd.exe"
+  if (-not (Test-Path $cmdExe)) { $cmdExe = "cmd.exe" }
+  $run = Join-Path $Root "run_service.cmd"
+  $tr = "`"$cmdExe`" /c `"`"$run`"`""
+
+  try { & schtasks /delete /tn $task /f 2>$null | Out-Null } catch {}
+
+  Write-Log "Instalando tarea: $task" "INFO"
+  Write-Log "Task /tr: $tr" "INFO"
+  $out = & schtasks /create /f /sc onlogon /ru SYSTEM /rl HIGHEST /delay 0000:30 /tn $task /tr $tr 2>&1
+  foreach ($l in $out) {
+    $msg = "$l".Trim()
+    if (-not [string]::IsNullOrWhiteSpace($msg)) { Write-Log "schtasks: $msg" "INFO" }
+  }
+  if ($LASTEXITCODE -ne 0) {
+    throw "schtasks /create falló con código $LASTEXITCODE"
+  }
   Write-Log "Tarea programada instalada: $task" "INFO"
 }
 
 function Start-Task {
   $task = "LibreriaPrintMonitor"
-  try { & schtasks /run /tn $task 2>$null | Out-Null } catch {}
+  try {
+    $out = & schtasks /run /tn $task 2>&1
+    foreach ($l in $out) { $msg = "$l".Trim(); if ($msg) { Write-Log "schtasks: $msg" "INFO" } }
+  } catch {}
 }
 
 function Stop-Task {
   $task = "LibreriaPrintMonitor"
-  try { & schtasks /end /tn $task 2>$null | Out-Null } catch {}
+  try {
+    $out = & schtasks /end /tn $task 2>&1
+    foreach ($l in $out) { $msg = "$l".Trim(); if ($msg) { Write-Log "schtasks: $msg" "INFO" } }
+  } catch {}
 }
 
 function Uninstall-All {
@@ -416,11 +436,14 @@ $script:Port = $Port
 $script:Token = $Token
 
 $root = Get-InstallRoot
+$script:LogPath = Join-Path $env:TEMP "LibreriaPrintMonitor_installer.log"
+Write-Log "Modo: $Mode" "INFO"
+Write-Log "Log temporal: $script:LogPath" "INFO"
+Ensure-Admin
+
 Ensure-Dirs -Root $root
 $script:LogPath = Join-Path (Join-Path $root "logs") "installer.log"
-
-Write-Log "Modo: $Mode" "INFO"
-Ensure-Admin
+Write-Log "Log instalador: $script:LogPath" "INFO"
 
 if ($Mode -eq "stop") { Stop-Task; Write-Log "OK stop" "INFO"; exit 0 }
 if ($Mode -eq "start") { Start-Task; Write-Log "OK start" "INFO"; exit 0 }

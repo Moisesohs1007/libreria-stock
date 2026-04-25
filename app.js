@@ -1051,18 +1051,25 @@ async function procesarCodigo(codigo, meta) {
       return false;
     }
 
+    let _lowStockAfter = null;
+    let _soldName = "";
     await runTransaction(db, async (tx) => {
       const prodRef = doc(db, "productos", p.id);
       const snap = await tx.get(prodRef);
       if (!snap.exists()) throw new Error("NOT_FOUND");
       const data = snap.data() || {};
       const stock = Number(data.stock);
+      _soldName = String(data.nombre ?? p.nombre ?? "").trim();
       if (Number.isFinite(stock) && stock <= 0) {
         const err = new Error("SIN_STOCK");
         err.code = "SIN_STOCK";
         throw err;
       }
-      if (Number.isFinite(stock)) tx.update(prodRef, { stock: stock - 1 });
+      if (Number.isFinite(stock)) {
+        const after = stock - 1;
+        _lowStockAfter = after;
+        tx.update(prodRef, { stock: after });
+      }
       else tx.update(prodRef, { stock: increment(-1) });
 
       const ventaRef = doc(collection(db, "ventas"));
@@ -1086,6 +1093,11 @@ async function procesarCodigo(codigo, meta) {
     const ms = Math.round(performance.now() - started);
     _scanAuditPush({ ts: new Date().toISOString(), ok: true, code: codigo, source, rol: rolActual || "", user: nombreVendedor || "Admin", ms });
     if (_scanDebug()) console.log("scan_ok", { code: codigo, ms });
+    if (typeof _lowStockAfter === "number" && _lowStockAfter <= 5) {
+      const nm = _soldName || (p.nombre || "Producto");
+      mostrarMensaje(`⚠️ Stock bajo: ${nm} (${_lowStockAfter} restantes)`, "warning");
+      return true;
+    }
     mostrarMensaje(`✅ ${(p.nombre || "Venta registrada")} (${ms}ms)`, "ok");
     return true;
   } catch (e) {

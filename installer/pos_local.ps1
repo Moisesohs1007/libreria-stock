@@ -54,6 +54,22 @@ function Resolve-Python {
   return $candidates
 }
 
+function Resolve-PythonW([string]$pyExe) {
+  $cmdPythonW = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
+  $cmdPyW = (Get-Command pyw.exe -ErrorAction SilentlyContinue).Source
+  $fromExe = $null
+  if ($pyExe -and ($pyExe -like "*python.exe")) { $fromExe = ($pyExe -replace "python\.exe$","pythonw.exe") }
+  $candidates = @(
+    "$InstallDir\\runtime\\pythonw.exe",
+    $fromExe,
+    $cmdPythonW,
+    $cmdPyW
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\Microsoft\WindowsApps\python.exe") } | Select-Object -Unique
+  if (-not $candidates) { return $null }
+  if ($candidates -is [array]) { return $candidates[0] }
+  return $candidates
+}
+
 function Set-Tls {
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
@@ -145,6 +161,41 @@ function Install-Task([string]$py) {
   Write-LogLine "Tarea instalada: $TaskName"
 }
 
+function Install-LocalAlias {
+  try {
+    $hosts = Join-Path $env:WINDIR "System32\drivers\etc\hosts"
+    $line = "127.0.0.1 virpu.local"
+    $txt = ""
+    try { $txt = Get-Content -Path $hosts -Raw -ErrorAction Stop } catch { $txt = "" }
+    if ($txt -notmatch "(?im)^\s*127\.0\.0\.1\s+virpu\.local\s*$") {
+      Add-Content -Path $hosts -Value "`r`n$line`r`n" -Encoding ASCII
+      Write-LogLine "Hosts actualizado: virpu.local"
+    } else {
+      Write-LogLine "Hosts ya tiene virpu.local"
+    }
+  } catch {
+    Write-LogLine "WARN hosts no actualizado: $($_.Exception.Message)"
+  }
+
+  try {
+    $urlContent = @(
+      "[InternetShortcut]",
+      "URL=http://virpu.local:8787/",
+      "IconFile=%SystemRoot%\\System32\\SHELL32.dll",
+      "IconIndex=14"
+    )
+    $p1 = "C:\Users\Public\Desktop\Libreria POS.url"
+    $p2 = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Libreria POS.url"
+    Ensure-Dir (Split-Path -Parent $p1)
+    Ensure-Dir (Split-Path -Parent $p2)
+    Set-Content -Path $p1 -Value $urlContent -Encoding ASCII
+    Set-Content -Path $p2 -Value $urlContent -Encoding ASCII
+    Write-LogLine "Accesos directos creados: virpu.local:8787"
+  } catch {
+    Write-LogLine "WARN accesos directos no creados: $($_.Exception.Message)"
+  }
+}
+
 function Start-Task {
   if (-not (Task-Exists)) { Write-LogLine "Tarea no existe: $TaskName"; return }
   & schtasks /run /tn $TaskName | Out-Null
@@ -228,10 +279,13 @@ if ($Mode -eq "install") {
   Stop-Task
   Stop-Port 8787
   $PyExe = Ensure-PythonRuntime
+  $PyW = Resolve-PythonW $PyExe
+  if (-not $PyW) { $PyW = $PyExe }
   Ensure-Dependencies $PyExe
   Install-ServerScript
   Install-WebAssets
-  Install-Task $PyExe
+  Install-Task $PyW
+  Install-LocalAlias
   Start-Task
   Start-Sleep -Seconds 1
   Test-Local
