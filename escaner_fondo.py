@@ -51,6 +51,8 @@ class EscanerFiltroTotal:
         self._controller = keyboard.Controller()
         self._scan_started = False
         self._scan_start_ts = 0.0
+        self._last_char_ts = 0.0
+        self._slow = False
 
     def reset(self):
         self.buffer = ""
@@ -59,6 +61,8 @@ class EscanerFiltroTotal:
         self._leaked_count = 0
         self._scan_started = False
         self._scan_start_ts = 0.0
+        self._last_char_ts = 0.0
+        self._slow = False
         if self.timer_envio:
             self.timer_envio.cancel()
             self.timer_envio = None
@@ -111,7 +115,8 @@ class EscanerFiltroTotal:
                 self.timer_envio.start()
                 return
 
-            if self._looks_like_scan(codigo) and len(codigo) >= 3:
+            fast_ok = (not self._slow) and (self._scan_start_ts > 0) and ((now - self._scan_start_ts) <= MAX_ACCUM_S)
+            if (self._looks_like_scan(codigo) or (fast_ok and codigo.isdigit() and len(codigo) >= 4)) and len(codigo) >= 3:
                 self.ultimo_codigo = codigo
                 logging.info("ESCANER_CAPTURADO: %s", codigo)
                 with _Q_LOCK:
@@ -147,20 +152,31 @@ class EscanerFiltroTotal:
                 elif 65 <= key.vk <= 90: char = chr(key.vk) # A-Z
         except: pass
 
-        if key == keyboard.Key.enter:
+        if key in (keyboard.Key.enter, keyboard.Key.tab):
             cleaned = self._sanitize(self.buffer.strip())
-            if self.es_escaneo_activo or (self._looks_like_scan(cleaned) and len(cleaned) >= 3):
+            now = time.time()
+            fast_ok = (not self._slow) and (self._scan_start_ts > 0) and ((now - self._scan_start_ts) <= MAX_ACCUM_S)
+            if self.es_escaneo_activo or (self._looks_like_scan(cleaned) and len(cleaned) >= 3) or (fast_ok and cleaned.isdigit() and len(cleaned) >= 4):
                 self.enviar_a_web()
                 return False
             self.reset()
             return True
 
         if char:
+            now = time.time()
             if not self.buffer:
-                self._scan_start_ts = time.time()
+                self._scan_start_ts = now
+                self._last_char_ts = now
+                self._slow = False
+            else:
+                dt = now - self._last_char_ts
+                self._last_char_ts = now
+                if dt > UMBRAL_HUMANO_MS:
+                    self._slow = True
             self.buffer += char
             cleaned = self._sanitize(self.buffer)
-            looks = self._looks_like_scan(cleaned)
+            fast_ok = (not self._slow) and ((now - self._scan_start_ts) <= MAX_ACCUM_S)
+            looks = self._looks_like_scan(cleaned) or (fast_ok and cleaned.isdigit() and len(cleaned) >= 4)
 
             if looks and not self.es_escaneo_activo:
                 self.es_escaneo_activo = True
