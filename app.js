@@ -44,8 +44,6 @@ function _timeoutSignal(ms) {
 function scanServiceBase() {
   const override = localStorage.getItem("scan_svc_base");
   if (override) return override;
-  const isLocal = location.hostname === "127.0.0.1" || location.hostname === "localhost";
-  if (isLocal && String(location.port || "") === "8787") return location.origin;
   return "http://127.0.0.1:7777";
 }
 
