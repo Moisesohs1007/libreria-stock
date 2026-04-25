@@ -2469,6 +2469,11 @@ window.vendorPcSetupOneClick = async function() {
 
   if (dl) {
     add("⏬ Descargando instalador: setup_pc_vendedor.cmd");
+    try {
+      const ver = Date.now();
+      dl.href = `https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main/installer/setup_pc_vendedor.cmd?v=${ver}`;
+      add(`Link: ${dl.href}`);
+    } catch {}
     try { dl.click(); } catch {}
     add("1) Ejecuta el .cmd descargado como Administrador.");
     add("2) Abre el sistema por: http://127.0.0.1:8787/");
