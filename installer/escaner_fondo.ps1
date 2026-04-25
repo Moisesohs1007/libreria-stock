@@ -53,6 +53,10 @@ function Set-Tls {
 
 function Download-File($url, $dst) {
   Set-Tls
+  try {
+    $parent = Split-Path -Parent $dst
+    if ($parent) { Ensure-Dir $parent }
+  } catch {}
   Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $dst
 }
 
@@ -77,8 +81,8 @@ function Install-EmergencyUnblock {
     $baseDir = $InstallDir
     if (-not $isAdmin) {
       $baseDir = Join-Path $env:LOCALAPPDATA "LibreriaScanner"
-      Ensure-Dir $baseDir
     }
+    Ensure-Dir $baseDir
     $dst = Join-Path $baseDir "DESBLOQUEAR_TECLADO_ESCANER.cmd"
     $desktop = [Environment]::GetFolderPath("Desktop")
     $dstDesktop = Join-Path $desktop "DESBLOQUEAR_TECLADO_ESCANER.cmd"
@@ -273,12 +277,18 @@ function Test-Endpoints {
 if ($Mode -in @("install","uninstall")) { Ensure-Admin }
 
 if ($Mode -eq "uninstall") {
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_scanner.log")
   Uninstall-All
   exit 0
 }
 
 if ($Mode -eq "stop") {
   Ensure-Admin
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_scanner.log")
   Stop-Task
   Stop-Port 7777
   exit 0
@@ -286,6 +296,9 @@ if ($Mode -eq "stop") {
 
 if ($Mode -eq "start") {
   Ensure-Admin
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_scanner.log")
   Start-Task
   Test-Endpoints
   exit 0
@@ -293,6 +306,9 @@ if ($Mode -eq "start") {
 
 if ($Mode -eq "install") {
   Ensure-Admin
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_scanner.log")
   Stop-Task
   Stop-Port 7777
   Install-EmergencyUnblock
