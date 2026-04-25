@@ -3,7 +3,7 @@ setlocal EnableExtensions
 
 title Libreria - Setup PC Vendedor
 
-set "SETUP_VER=20260422f"
+set "SETUP_VER=20260425a"
 set "DL_DIR=%TEMP%\LibreriaInstallerAll"
 if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
 set "SETUP_LOG=%DL_DIR%\setup_pc_vendedor.log"
@@ -44,7 +44,8 @@ echo.
 echo Version: %SETUP_VER%
 echo.
 echo Este instalador configura en esta PC:
-echo - POS local (web):        http://127.0.0.1:8787/
+echo - POS local (web):        http://virpu.local:8787/  ^(alias^)
+echo - POS local (alterno):    http://127.0.0.1:8787/
 echo - Capturador escaner:     http://127.0.0.1:7777/status
 echo - Conteo de impresiones:  http://127.0.0.1:5056/api/prints/health
 echo.
@@ -73,9 +74,14 @@ echo  LISTO
 echo ============================================
 echo.
 echo Abre el sistema en esta PC por:
-echo   http://127.0.0.1:8787/
+echo   http://virpu.local:8787/
 echo.
-start "" "http://127.0.0.1:8787/" >nul 2>nul
+ping -n 1 virpu.local >nul 2>nul
+if "%errorlevel%"=="0" (
+  start "" "http://virpu.local:8787/" >nul 2>nul
+) else (
+  start "" "http://127.0.0.1:8787/" >nul 2>nul
+)
 pause
 exit /b 0
 
