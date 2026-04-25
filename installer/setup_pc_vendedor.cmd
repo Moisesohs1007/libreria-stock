@@ -3,29 +3,38 @@ setlocal EnableExtensions
 
 title Libreria - Setup PC Vendedor
 
-set "SETUP_VER=20260422e"
+set "SETUP_VER=20260422f"
 set "DL_DIR=%TEMP%\LibreriaInstallerAll"
 if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
 set "SETUP_LOG=%DL_DIR%\setup_pc_vendedor.log"
+if not exist "%SETUP_LOG%" type nul > "%SETUP_LOG%"
+>>"%SETUP_LOG%" echo ============================================
+>>"%SETUP_LOG%" echo  SETUP PC VENDEDOR - LOG
+>>"%SETUP_LOG%" echo  %DATE% %TIME%
+>>"%SETUP_LOG%" echo  TEMP=%TEMP%
+>>"%SETUP_LOG%" echo  DL_DIR=%DL_DIR%
+>>"%SETUP_LOG%" echo  SCRIPT=%~f0
+>>"%SETUP_LOG%" echo  USER=%USERNAME%
+>>"%SETUP_LOG%" echo ============================================
 
 net session >nul 2>&1
 if not "%errorlevel%"=="0" (
   echo Solicitando permisos de Administrador...
-  echo Si esta ventana se cierra, aparecera otra ventana con permisos (UAC). Acepta el aviso.
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%ComSpec%' -ArgumentList '/k','\"\"%~f0\"\"' -Verb RunAs" >nul 2>nul
+  echo Si esta ventana se cierra, aparecera otra ventana con permisos ^(UAC^). Acepta el aviso.
+  >>"%SETUP_LOG%" echo NOT_ADMIN: solicitando elevacion...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath cmd.exe -ArgumentList '/k','""%~f0""' -Verb RunAs" >nul 2>nul
   exit /b 0
 )
 
 set "ROOT_URL=https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main/installer"
+set "LOCAL_DIR=%~dp0"
 set "P_POS=%DL_DIR%\pos_local.ps1"
 set "P_SCANNER=%DL_DIR%\escaner_fondo.ps1"
 set "P_PRINTS=%DL_DIR%\conteo_impresiones.ps1"
-
-echo.>>"%SETUP_LOG%"
-echo ============================================>>"%SETUP_LOG%"
-echo  SETUP PC VENDEDOR - LOG>>"%SETUP_LOG%"
-echo  %DATE% %TIME%>>"%SETUP_LOG%"
-echo ============================================>>"%SETUP_LOG%"
+if exist "%LOCAL_DIR%pos_local.ps1" set "P_POS=%LOCAL_DIR%pos_local.ps1"
+if exist "%LOCAL_DIR%escaner_fondo.ps1" set "P_SCANNER=%LOCAL_DIR%escaner_fondo.ps1"
+if exist "%LOCAL_DIR%conteo_impresiones.ps1" set "P_PRINTS=%LOCAL_DIR%conteo_impresiones.ps1"
+>>"%SETUP_LOG%" echo ADMIN_OK: iniciando pasos...
 
 echo.
 echo ============================================
@@ -49,13 +58,13 @@ echo.
 echo Nota: si Windows SmartScreen bloquea el .cmd: clic en "Mas informacion" -> "Ejecutar de todas formas".
 echo.
 
-call :Download "%ROOT_URL%/pos_local.ps1" "%P_POS%" || goto :Fail
+if /I "%P_POS%"=="%DL_DIR%\pos_local.ps1" call :Download "%ROOT_URL%/pos_local.ps1" "%P_POS%" || goto :Fail
 call :RunPs "%P_POS%" "install" "POS local (8787)" "C:\LibreriaPOS\logs\doctor_pos_local.log" || goto :Fail
 
-call :Download "%ROOT_URL%/escaner_fondo.ps1" "%P_SCANNER%" || goto :Fail
+if /I "%P_SCANNER%"=="%DL_DIR%\escaner_fondo.ps1" call :Download "%ROOT_URL%/escaner_fondo.ps1" "%P_SCANNER%" || goto :Fail
 call :RunPs "%P_SCANNER%" "install" "Capturador escaner (7777)" "C:\LibreriaScanner\logs\doctor_scanner.log" || goto :Fail
 
-call :Download "%ROOT_URL%/conteo_impresiones.ps1" "%P_PRINTS%" || goto :Fail
+if /I "%P_PRINTS%"=="%DL_DIR%\conteo_impresiones.ps1" call :Download "%ROOT_URL%/conteo_impresiones.ps1" "%P_PRINTS%" || goto :Fail
 call :RunPs "%P_PRINTS%" "install" "Conteo impresiones (5056)" "C:\LibreriaPrintMonitor\logs\installer.log" || goto :Fail
 
 echo.
@@ -89,7 +98,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode %MODE% >>"%SET
 set "EC=%errorlevel%"
 if not "%EC%"=="0" (
   echo.
-  echo [ERROR] Fallo: %LABEL% (codigo %EC%)
+  echo [ERROR] Fallo: %LABEL% - codigo %EC%
   echo Revisa log: %STEP_LOG%
   echo.
   if exist "%SETUP_LOG%" start "" notepad "%SETUP_LOG%" >nul 2>nul

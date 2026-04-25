@@ -48,9 +48,10 @@ function Resolve-Python {
   $candidates = @(
     "$InstallDir\\runtime\\python.exe",
     $cmdPython
-  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
-  if ($candidates.Count -gt 0) { return $candidates[0] }
-  return $null
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\Microsoft\WindowsApps\python.exe") } | Select-Object -Unique
+  if (-not $candidates) { return $null }
+  if ($candidates -is [array]) { return $candidates[0] }
+  return $candidates
 }
 
 function Set-Tls {
@@ -117,17 +118,23 @@ function Ensure-Dependencies([string]$py) {
 }
 
 $InstallDir = "C:\LibreriaPOS"
-Ensure-Dir $InstallDir
-Ensure-Dir "$InstallDir\logs"
-Ensure-Dir "$InstallDir\web"
-$global:LogPath = "$InstallDir\logs\doctor_pos_local.log"
+$global:LogPath = (Join-Path $env:TEMP "LibreriaPOS_doctor_pos_local.log")
+try {
+  if (Test-Path -LiteralPath (Join-Path $InstallDir "logs")) {
+    $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_pos_local.log")
+  }
+} catch {}
 
 $TaskName = "LibreriaPOSLocal"
 $PyExe = $null
 
 function Task-Exists {
-  $out = & schtasks /query /tn $TaskName 2>$null
-  return ($LASTEXITCODE -eq 0)
+  try {
+    & schtasks /query /tn $TaskName 1>$null 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
 }
 
 function Install-Task([string]$py) {
@@ -185,6 +192,9 @@ Write-LogLine "InstallDir=$InstallDir"
 if ($Mode -in @("install","start","stop","uninstall")) { Ensure-Admin }
 
 if ($Mode -eq "uninstall") {
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  Ensure-Dir (Join-Path $InstallDir "web")
   Stop-Task
   Stop-Port 8787
   if (Task-Exists) { & schtasks /delete /tn $TaskName /f 1>$null 2>$null }
@@ -193,12 +203,18 @@ if ($Mode -eq "uninstall") {
 }
 
 if ($Mode -eq "stop") {
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  Ensure-Dir (Join-Path $InstallDir "web")
   Stop-Task
   Stop-Port 8787
   exit 0
 }
 
 if ($Mode -eq "start") {
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  Ensure-Dir (Join-Path $InstallDir "web")
   Start-Task
   Start-Sleep -Seconds 1
   Test-Local
@@ -206,6 +222,9 @@ if ($Mode -eq "start") {
 }
 
 if ($Mode -eq "install") {
+  Ensure-Dir $InstallDir
+  Ensure-Dir (Join-Path $InstallDir "logs")
+  Ensure-Dir (Join-Path $InstallDir "web")
   Stop-Task
   Stop-Port 8787
   $PyExe = Ensure-PythonRuntime

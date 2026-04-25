@@ -57,9 +57,12 @@ function Download-File($url, $dst) {
 }
 
 $InstallDir = "C:\LibreriaScanner"
-Ensure-Dir $InstallDir
-Ensure-Dir "$InstallDir\logs"
-$global:LogPath = "$InstallDir\logs\doctor_scanner.log"
+$global:LogPath = (Join-Path $env:TEMP "LibreriaScanner_doctor_scanner.log")
+try {
+  if (Test-Path -LiteralPath (Join-Path $InstallDir "logs")) {
+    $global:LogPath = (Join-Path (Join-Path $InstallDir "logs") "doctor_scanner.log")
+  }
+} catch {}
 
 Write-LogLine "=== Scanner Doctor: $Mode ==="
 Write-LogLine "InstallDir=$InstallDir"
@@ -110,9 +113,10 @@ function Resolve-PythonExe {
     "$InstallDir\\python\\python.exe",
     $localPython,
     $cmdPython
-  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
-  if ($candidates.Count -gt 0) { return $candidates[0] }
-  return $null
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\Microsoft\WindowsApps\python.exe") } | Select-Object -Unique
+  if (-not $candidates) { return $null }
+  if ($candidates -is [array]) { return $candidates[0] }
+  return $candidates
 }
 
 function Resolve-PythonW([string]$pyExe) {
@@ -127,9 +131,10 @@ function Resolve-PythonW([string]$pyExe) {
     $localPythonW,
     $cmdPythonW,
     $cmdPyW
-  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\\Microsoft\\WindowsApps\\python.exe") } | Select-Object -Unique
-  if ($candidates.Count -gt 0) { return $candidates[0] }
-  return $null
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and ($_ -notlike "*\Microsoft\WindowsApps\python.exe") } | Select-Object -Unique
+  if (-not $candidates) { return $null }
+  if ($candidates -is [array]) { return $candidates[0] }
+  return $candidates
 }
 
 function Ensure-PythonRuntime {
@@ -205,8 +210,12 @@ function Install-ScannerScript {
 }
 
 function Task-Exists {
-  $out = & schtasks /query /tn $TaskName 2>$null
-  return ($LASTEXITCODE -eq 0)
+  try {
+    & schtasks /query /tn $TaskName 1>$null 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
 }
 
 function Install-Task([string]$pyw) {
