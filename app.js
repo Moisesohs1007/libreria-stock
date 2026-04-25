@@ -93,6 +93,30 @@ function mostrarMensaje(texto, tipo="ok") {
 }
 window.mostrarMensaje = mostrarMensaje;
 
+function _updateLowStockBanner() {
+  const el = document.getElementById("low-stock-banner");
+  if (!el) return;
+  if (rolActual !== "vendedor" && rolActual !== "admin") {
+    el.style.display = "none";
+    return;
+  }
+  const bajos = (todosLosProductos || []).filter(p => {
+    const s = Number(p.stock);
+    return Number.isFinite(s) && s <= 5;
+  }).sort((a, b) => Number(a.stock) - Number(b.stock));
+  if (!bajos.length) {
+    el.style.display = "none";
+    return;
+  }
+  const items = bajos.slice(0, 5);
+  const extra = bajos.length - items.length;
+  el.innerHTML = `<div class="ls-title">Stock bajo (≤ 5)</div>` + items.map(p => {
+    const nm = String(p.nombre || "").trim() || "Producto";
+    return `<div class="ls-item"><span>${nm}</span><span class="ls-num">${p.stock}</span></div>`;
+  }).join("") + (extra > 0 ? `<div class="ls-item"><span>y ${extra} más</span><span class="ls-num">…</span></div>` : "");
+  el.style.display = "block";
+}
+
 try { localStorage.setItem("scan_autofocus", "0"); } catch {}
 
 const _OFFLINE_QUEUE_KEY = "offline_sales_queue_v1";
@@ -395,6 +419,7 @@ function iniciarListeners() {
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _rebuildProductoIndex();
       actualizarUIAdmin();
+      _updateLowStockBanner();
       _drainPendingScans();
     },
     () => {
@@ -413,6 +438,17 @@ function iniciarListeners() {
     });
     actualizarUIVentas();
   });
+
+  if (!window._dayTick) {
+    window._dayKey = new Date().toDateString();
+    window._dayTick = setInterval(() => {
+      const k = new Date().toDateString();
+      if (k === window._dayKey) return;
+      window._dayKey = k;
+      actualizarUIVentas();
+      _updateLowStockBanner();
+    }, 60_000);
+  }
 
   cargarClientesFiados();
   cargarFiadasDia();
@@ -833,7 +869,72 @@ function actualizarUIVentas() {
   if(vvh) vvh.textContent = ventasHoy.length;
   if(vth) vth.textContent = `S/${totalHoy.toFixed(2)}`;
 
+  _renderVentasDelDia(ventasHoy);
   renderizarHistorial(todasLasVentas);
+}
+
+function _renderVentasDelDia(ventasHoy) {
+  const ord = [...(ventasHoy || [])].sort((a, b) => {
+    const fa = a.fecha?.toDate ? a.fecha.toDate() : new Date(a.fecha);
+    const fb = b.fecha?.toDate ? b.fecha.toDate() : new Date(b.fecha);
+    return fb - fa;
+  });
+
+  const ven = document.getElementById("ventas-vendedor");
+  if (ven) {
+    if (!ord.length) {
+      ven.innerHTML = `<div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:30px;">Sin ventas hoy...</div>`;
+    } else {
+      const rows = ord.slice(0, 500).map(v => {
+        const f = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
+        const dt = f.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+        const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario) * (_toNum(v.cantidad) || 1));
+        const cant = _toNum(v.cantidad) || 1;
+        return `<div class="hist-row" style="grid-template-columns:1fr 2fr .6fr .8fr;">
+          <span class="mono">${dt}</span>
+          <span style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.nombre || ""}</span>
+          <span class="mono" style="font-weight:900;text-align:right;">${cant}</span>
+          <span style="color:var(--green);font-weight:900;text-align:right;">S/ ${Number(monto || 0).toFixed(2)}</span>
+        </div>`;
+      }).join("");
+      ven.innerHTML = `<div class="hist-row hdr" style="grid-template-columns:1fr 2fr .6fr .8fr;">
+        <span>Hora</span><span>Producto</span><span style="text-align:right;">Cant</span><span style="text-align:right;">Total</span>
+      </div>` + rows + (ord.length > 500 ? `<div style="padding:10px 12px;color:#888;font-size:.8rem;">Mostrando 500 de ${ord.length}</div>` : "");
+    }
+  }
+
+  const adm = document.getElementById("ventas-admin");
+  if (adm) {
+    if (!ord.length) {
+      adm.innerHTML = `<div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Sin ventas hoy...</div>`;
+    } else {
+      const map = new Map();
+      for (const v of ord) {
+        const key = String(v.codigo || v.nombre || "").trim() || "SIN_CODIGO";
+        const prev = map.get(key) || { nombre: v.nombre || "", codigo: v.codigo || "", cant: 0, total: 0 };
+        const cant = _toNum(v.cantidad) || 1;
+        const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario) * cant);
+        prev.cant += cant;
+        prev.total += Number(monto || 0);
+        if (!prev.nombre) prev.nombre = v.nombre || "";
+        if (!prev.codigo) prev.codigo = v.codigo || "";
+        map.set(key, prev);
+      }
+      const items = [...map.values()].sort((a, b) => b.cant - a.cant);
+      const rows = items.slice(0, 300).map(x => {
+        const label = x.codigo ? `${x.nombre} (${x.codigo})` : (x.nombre || "Producto");
+        return `<div class="hist-row" style="grid-template-columns:2.2fr .6fr .8fr .4fr;">
+          <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+          <span class="mono" style="font-weight:900;text-align:right;">${x.cant}</span>
+          <span style="color:var(--green);font-weight:900;text-align:right;">S/ ${Number(x.total || 0).toFixed(2)}</span>
+          <span></span>
+        </div>`;
+      }).join("");
+      adm.innerHTML = `<div class="hist-row hdr" style="grid-template-columns:2.2fr .6fr .8fr .4fr;">
+        <span>Producto</span><span style="text-align:right;">Cant</span><span style="text-align:right;">Total</span><span></span>
+      </div>` + rows + (items.length > 300 ? `<div style="padding:10px 12px;color:#888;font-size:.8rem;">Mostrando 300 de ${items.length}</div>` : "");
+    }
+  }
 }
 
 function renderizarHistorial(ventas) {
