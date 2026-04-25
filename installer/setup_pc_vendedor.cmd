@@ -96,14 +96,13 @@ echo.
 echo ---- %LABEL% ----
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Mode %MODE% >>"%SETUP_LOG%" 2>&1
 set "EC=%errorlevel%"
-if not "%EC%"=="0" (
-  echo.
-  echo [ERROR] Fallo: %LABEL% - codigo %EC%
-  echo Revisa log: %STEP_LOG%
-  echo.
-  if exist "%SETUP_LOG%" start "" notepad "%SETUP_LOG%" >nul 2>nul
-  exit /b %EC%
-)
+if "%EC%"=="0" exit /b 0
+echo.
+echo [ERROR] Fallo: %LABEL% - codigo %EC%
+echo Revisa log: %STEP_LOG%
+echo.
+if exist "%SETUP_LOG%" start "" notepad "%SETUP_LOG%" >nul 2>nul
+exit /b %EC%
 exit /b 0
 
 :Fail
