@@ -10,6 +10,7 @@
 import { db, storage } from './firebase-config.js?v=20260426b';
 import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260426b';
 import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260426b';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260426b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc
@@ -1107,29 +1108,180 @@ window.descargarPlantilla = function() {
   XLSX.writeFile(wb, "plantilla_productos.xlsx");
 };
 
+function _brandInfo() {
+  const nombre = "Librería Virgen de la Puerta";
+  let logoUrl = "";
+  try { logoUrl = new URL("virgen.png", window.location.href).toString(); } catch { logoUrl = "virgen.png"; }
+  return { nombre, logoUrl };
+}
+
+function _mkReportBook(opts) {
+  const b = _brandInfo();
+  const title = String(opts?.title || "").trim() || "Reporte";
+  const subtitle = String(opts?.subtitle || "").trim();
+  const dataRows = Array.isArray(opts?.dataRows) ? opts.dataRows : [];
+  const columns = Array.isArray(opts?.columns) ? opts.columns : [];
+  const statsRows = Array.isArray(opts?.statsRows) ? opts.statsRows : [];
+  const sheetName = String(opts?.sheetName || "Reporte");
+
+  const aoa = [
+    [b.nombre, "", "", ""],
+    [title, "", "", ""],
+    [subtitle, "", "", ""],
+    ["Logo", b.logoUrl, "", ""],
+    ["", "", "", ""],
+    ["Estadísticas", "", "", ""],
+    ...statsRows.map(r => [String(r?.k || ""), r?.v ?? "", "", ""]),
+    ["", "", "", ""],
+    ["Datos", "", "", ""],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  try {
+    if (b.logoUrl) ws["B4"] = { f: `HYPERLINK("${b.logoUrl}","Abrir logo")` };
+  } catch {}
+  XLSX.utils.sheet_add_json(ws, dataRows, { origin: "A11" });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  if (columns.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(columns), "Columnas");
+  return wb;
+}
+
 window.exportarExcel = function(){
-  const datos=todosLosProductos.map(p=>({Nombre:p.nombre,Categoría:p.categoria||"",Proveedor:p.proveedor||"",Código:p.codigo,Stock:p.stock,"Precio Venta":_precioVenta(p),"Precio Compra":_precioCompra(p)}));
-  const ws=XLSX.utils.json_to_sheet(datos);
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,"Inventario");
-  XLSX.writeFile(wb,`inventario_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
+  const datos = (todosLosProductos || []).map(p => ({
+    Nombre: p.nombre,
+    Categoría: p.categoria || "",
+    Proveedor: p.proveedor || "",
+    Stock: _toNum(p.stock),
+    "Precio Venta": _precioVenta(p),
+    "Precio Compra": _precioCompra(p)
+  }));
+  const wb = _mkReportBook({
+    title: "Reporte de inventario",
+    subtitle: "Listado de productos del sistema",
+    dataRows: datos,
+    columns: [
+      { Columna: "Nombre", Descripción: "Nombre del producto." },
+      { Columna: "Categoría", Descripción: "Categoría del producto." },
+      { Columna: "Proveedor", Descripción: "Proveedor/marca/distribuidor (según registro)." },
+      { Columna: "Stock", Descripción: "Stock actual." },
+      { Columna: "Precio Venta", Descripción: "Precio de venta (S/)." },
+      { Columna: "Precio Compra", Descripción: "Costo/precio compra (S/)." }
+    ],
+    statsRows: [
+      { k: "Productos", v: datos.length }
+    ],
+    sheetName: "Inventario"
+  });
+  XLSX.writeFile(wb, `inventario_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
 };
 
 window.exportarHistorialExcel = function() {
   const desde = document.getElementById("filtro-desde")?.value || "";
   const hasta = document.getElementById("filtro-hasta")?.value || "";
-  let f = todasLasVentas;
-  if (desde) { const d = new Date(desde); d.setHours(0, 0, 0, 0); f = f.filter(v => { const t = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha); return t >= d; }); }
-  if (hasta) { const h = new Date(hasta); h.setHours(23, 59, 59, 999); f = f.filter(v => { const t = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha); return t <= h; }); }
-  const datos = f.map(v => {
-    const ft = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
-    const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario)*(_toNum(v.cantidad)||1));
-    return { Fecha: ft.toLocaleDateString("es-PE"), Hora: ft.toLocaleTimeString("es-PE"), Producto: v.nombre, Precio: monto, Código: v.codigo || "" };
+  const from = desde ? new Date(desde + "T00:00:00") : null;
+  const to = hasta ? new Date(hasta + "T23:59:59") : null;
+  const built = buildVentasExport(todasLasVentas, { from, to });
+  const sub = [
+    from ? `Desde: ${from.toISOString().slice(0, 10)}` : "Desde: —",
+    to ? `Hasta: ${to.toISOString().slice(0, 10)}` : "Hasta: —"
+  ].join("  |  ");
+  const wb = _mkReportBook({
+    title: "Reporte de ventas",
+    subtitle: sub,
+    dataRows: built.rows,
+    columns: built.columns,
+    statsRows: [
+      { k: "Ventas", v: built.stats.ventas },
+      { k: "Unidades", v: built.stats.unidades },
+      { k: "Total", v: Number(built.stats.total || 0).toFixed(2) },
+      { k: "Ticket prom.", v: Number(built.stats.ticketPromedio || 0).toFixed(2) }
+    ],
+    sheetName: "Ventas"
   });
-  const ws = XLSX.utils.json_to_sheet(datos);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Ventas");
   XLSX.writeFile(wb, `ventas_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
+};
+
+window.exportarHistorialPDF = function() {
+  const desde = document.getElementById("filtro-desde")?.value || "";
+  const hasta = document.getElementById("filtro-hasta")?.value || "";
+  const from = desde ? new Date(desde + "T00:00:00") : null;
+  const to = hasta ? new Date(hasta + "T23:59:59") : null;
+  const built = buildVentasExport(todasLasVentas, { from, to });
+  const b = _brandInfo();
+  const w = window.open("", "_blank");
+  if (!w) return mostrarMensaje("⚠️ Permite ventanas emergentes", "warning");
+  const title = "Reporte de ventas";
+  const subtitle = [
+    from ? `Desde: ${from.toISOString().slice(0, 10)}` : "Desde: —",
+    to ? `Hasta: ${to.toISOString().slice(0, 10)}` : "Hasta: —"
+  ].join("  |  ");
+  const head = `<meta charset="utf-8"><title>${title}</title>
+    <style>
+      :root{--g:#10b981;--b:#111827;--m:#6b7280;--bd:#e5e7eb;}
+      body{font-family:Arial, sans-serif; padding:22px; color:var(--b);}
+      .hdr{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+      .logo{width:40px;height:40px;object-fit:contain;border-radius:10px;border:1px solid var(--bd);padding:6px;background:#fff;}
+      h1{font-size:18px;margin:0;}
+      .sub{color:var(--m);font-size:12px;margin-top:2px;}
+      .box{border:1px solid var(--bd);padding:12px;border-radius:12px;margin:10px 0;}
+      .k{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;}
+      .k .box{margin:0;}
+      .k .v{font-size:16px;font-weight:900;}
+      table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;}
+      th,td{border:1px solid var(--bd);padding:6px;text-align:left;vertical-align:top;}
+      th{background:#f9fafb;font-weight:900;}
+      .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .right{text-align:right;}
+      .small{font-size:11px;color:var(--m);}
+    </style>`;
+  const stats = `
+    <div class="k">
+      <div class="box"><div class="small">Ventas</div><div class="v">${built.stats.ventas}</div></div>
+      <div class="box"><div class="small">Unidades</div><div class="v">${built.stats.unidades}</div></div>
+      <div class="box"><div class="small">Total</div><div class="v" style="color:var(--g);">S/ ${Number(built.stats.total||0).toFixed(2)}</div></div>
+      <div class="box"><div class="small">Ticket prom.</div><div class="v">S/ ${Number(built.stats.ticketPromedio||0).toFixed(2)}</div></div>
+    </div>
+  `;
+  const cols = `
+    <div class="box">
+      <div style="font-weight:900;margin-bottom:6px;">Descripción de columnas</div>
+      ${(built.columns || []).map(c => `<div class="small"><span class="mono">${c.Columna}:</span> ${c.Descripción}</div>`).join("")}
+    </div>
+  `;
+  const rowsHtml = (built.rows || []).map(r => `
+    <tr>
+      <td class="mono">${r.Fecha} ${r.Hora}</td>
+      <td>${r.Producto}</td>
+      <td class="mono right">${Number(r.Cantidad||0).toLocaleString()}</td>
+      <td class="mono right">S/ ${Number(r["Precio unitario"]||0).toFixed(2)}</td>
+      <td class="mono right">S/ ${Number(r.Total||0).toFixed(2)}</td>
+    </tr>
+  `).join("");
+  const body = `
+    <div class="hdr">
+      <img class="logo" src="${b.logoUrl}" onerror="this.style.display='none'">
+      <div>
+        <div style="font-weight:900;">${b.nombre}</div>
+        <h1>${title}</h1>
+        <div class="sub">${subtitle}</div>
+      </div>
+    </div>
+    ${stats}
+    ${cols}
+    <div class="box">
+      <div style="font-weight:900;margin-bottom:6px;">Detalle</div>
+      <table>
+        <thead><tr><th>Fecha/Hora</th><th>Producto</th><th class="right">Cant</th><th class="right">Precio unit.</th><th class="right">Total</th></tr></thead>
+        <tbody>${rowsHtml || `<tr><td colspan="5" style="text-align:center;color:#999;padding:14px;">Sin datos</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+  w.document.open();
+  w.document.write(`<html><head>${head}</head><body>${body}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch {} }, 300);
 };
 
 // =============================================
@@ -1226,7 +1378,7 @@ function _renderCajaAdmin(ahora, ventasHoy, totalHoy) {
     }
     const items = [...map.values()].sort((a, b) => (b.total - a.total) || (b.cant - a.cant));
     const rows = items.slice(0, 10).map(x => {
-      const label = x.codigo ? `${x.nombre} (${x.codigo})` : (x.nombre || "Producto");
+      const label = x.nombre || "Producto";
       return `<div class="hist-row" style="grid-template-columns:2fr .6fr .8fr;">
         <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
         <span class="mono" style="font-weight:900;text-align:right;">${x.cant}</span>
@@ -1286,7 +1438,7 @@ function _renderVentasDelDia(ventasHoy) {
       }
       const items = [...map.values()].sort((a, b) => b.cant - a.cant);
       const rows = items.slice(0, 300).map(x => {
-        const label = x.codigo ? `${x.nombre} (${x.codigo})` : (x.nombre || "Producto");
+        const label = x.nombre || "Producto";
         return `<div class="hist-row" style="grid-template-columns:2.2fr .6fr .8fr .4fr;">
           <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
           <span class="mono" style="font-weight:900;text-align:right;">${x.cant}</span>
@@ -1313,7 +1465,7 @@ function renderizarHistorial(ventas) {
     const f=v.fecha?.toDate?v.fecha.toDate():new Date(v.fecha);
     const dt=f.toLocaleDateString("es-PE")+" "+f.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
     const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario)*(_toNum(v.cantidad)||1));
-    return `<div class="hist-row"><span>${dt}</span><span style="font-weight:600;">${v.nombre}</span><span style="color:var(--green);font-weight:700;">S/ ${monto.toFixed(2)}</span></div>`;
+    return `<div class="hist-row hist-row3"><span>${dt}</span><span style="font-weight:600;">${v.nombre}</span><span style="color:var(--green);font-weight:700;">S/ ${monto.toFixed(2)}</span></div>`;
   }).join("");
 }
 
@@ -3692,24 +3844,25 @@ window.movActualizar = async function() {
 
 window.movExportarExcel = function() {
   if (!_requireAdmin()) return;
-  const rows = (todosLosMovimientos || []).map(m => {
-    const d = _tsToDate(m.fecha) || new Date();
-    return {
-      Fecha: d.toISOString().slice(0, 10),
-      Tipo: m.tipo || "",
-      Categoría: m.categoria || "",
-      Cuenta: m.cuenta || "",
-      Proveedor: m.proveedor || "",
-      Descripción: m.descripcion || "",
-      Monto: _toNum(m.monto),
-      Impuesto: _toNum(m.impuesto_monto),
-      Descuento: _toNum(m.descuento_monto),
-      "Comprobante URL": m.comprobante_url || (m.comprobante?.url || ""),
-    };
+  const r = _movRangeFromUi();
+  const built = buildMovimientosExport(todosLosMovimientos, { from: r?.from || null, to: r?.to || null });
+  const sub = [
+    r?.from ? `Desde: ${r.from.toISOString().slice(0, 10)}` : "Desde: —",
+    r?.to ? `Hasta: ${r.to.toISOString().slice(0, 10)}` : "Hasta: —"
+  ].join("  |  ");
+  const wb = _mkReportBook({
+    title: "Reporte de movimientos (ingresos/egresos)",
+    subtitle: sub,
+    dataRows: built.rows,
+    columns: built.columns,
+    statsRows: [
+      { k: "Movimientos", v: built.stats.movimientos },
+      { k: "Ingresos", v: Number(built.stats.ingresos || 0).toFixed(2) },
+      { k: "Egresos", v: Number(built.stats.egresos || 0).toFixed(2) },
+      { k: "Neto", v: Number(built.stats.neto || 0).toFixed(2) }
+    ],
+    sheetName: "Movimientos"
   });
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Movimientos");
   XLSX.writeFile(wb, `movimientos_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
 };
 
@@ -3743,12 +3896,11 @@ window.gananciasCalcular = async function() {
   if (elUt) elUt.textContent = _fmtS(utilidad);
   const tbody = document.getElementById("gan-tabla");
   if (tbody) {
-    if (!res.rows.length) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
+    if (!res.rows.length) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
     else tbody.innerHTML = res.rows.map(r => {
       const margen = r.ingresos > 0 ? (r.utilidad / r.ingresos) * 100 : 0;
       return `<tr>
         <td>${r.producto}</td>
-        <td class="mono">${r.codigo}</td>
         <td class="mono">${r.cant.toLocaleString()}</td>
         <td class="mono">${_fmtS(r.ingresos)}</td>
         <td class="mono">${_fmtS(r.costos)}</td>
@@ -3777,28 +3929,42 @@ window.gananciasExportarExcel = function() {
   const last = window._ganLast;
   if (!last) return mostrarMensaje("⚠️ Primero calcula", "warning");
   const { filtros, res, egresosOp, utilidad } = last;
-  const resumen = [
-    { Campo: "Desde", Valor: filtros.desde ? filtros.desde.toISOString().slice(0, 10) : "" },
-    { Campo: "Hasta", Valor: filtros.hasta ? filtros.hasta.toISOString().slice(0, 10) : "" },
-    { Campo: "Categoría", Valor: filtros.categoria || "Todas" },
-    { Campo: "Proveedor", Valor: filtros.proveedor || "Todos" },
-    { Campo: "Ingresos", Valor: _toNum(res.ingresos) },
-    { Campo: "Costos", Valor: _toNum(res.costos) },
-    { Campo: "Egresos op.", Valor: _toNum(egresosOp) },
-    { Campo: "Utilidad", Valor: _toNum(utilidad) },
-  ];
   const detalle = (res.rows || []).map(r => ({
     Producto: r.producto,
-    Código: r.codigo,
     Cantidad: r.cant,
     Ingresos: _toNum(r.ingresos),
     Costos: _toNum(r.costos),
     Utilidad: _toNum(r.utilidad),
     Margen: r.ingresos > 0 ? (r.utilidad / r.ingresos) : 0,
   }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), "Resumen");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), "Margen por producto");
+  const sub = [
+    filtros.desde ? `Desde: ${filtros.desde.toISOString().slice(0, 10)}` : "Desde: —",
+    filtros.hasta ? `Hasta: ${filtros.hasta.toISOString().slice(0, 10)}` : "Hasta: —",
+    `Categoría: ${filtros.categoria || "Todas"}`,
+    `Proveedor: ${filtros.proveedor || "Todos"}`
+  ].join("  |  ");
+  const margenBruto = res.ingresos > 0 ? (res.utilidadBruta / res.ingresos) : 0;
+  const wb = _mkReportBook({
+    title: "Análisis de ganancias",
+    subtitle: sub,
+    dataRows: detalle,
+    columns: [
+      { Columna: "Producto", Descripción: "Nombre del producto." },
+      { Columna: "Cantidad", Descripción: "Unidades vendidas en el período." },
+      { Columna: "Ingresos", Descripción: "Ingresos por ventas (S/), considerando registros de venta." },
+      { Columna: "Costos", Descripción: "Costo de adquisición (S/) según precio_compra * cantidad." },
+      { Columna: "Utilidad", Descripción: "Ingresos - costos." },
+      { Columna: "Margen", Descripción: "Utilidad / ingresos (0–1)." }
+    ],
+    statsRows: [
+      { k: "Ingresos", v: Number(res.ingresos || 0).toFixed(2) },
+      { k: "Costos", v: Number(res.costos || 0).toFixed(2) },
+      { k: "Egresos op.", v: Number(egresosOp || 0).toFixed(2) },
+      { k: "Utilidad", v: Number(utilidad || 0).toFixed(2) },
+      { k: "Margen bruto", v: (Number(margenBruto || 0) * 100).toFixed(2) + "%" }
+    ],
+    sheetName: "Ganancias"
+  });
   XLSX.writeFile(wb, `ganancias_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
 };
 
@@ -3807,6 +3973,7 @@ window.gananciasExportarPDF = function() {
   const last = window._ganLast;
   if (!last) return mostrarMensaje("⚠️ Primero calcula", "warning");
   const { filtros, res, egresosOp, utilidad } = last;
+  const b = _brandInfo();
   const img = (() => {
     try {
       const c = document.getElementById("gan-chart-canvas");
@@ -3816,37 +3983,65 @@ window.gananciasExportarPDF = function() {
   })();
   const w = window.open("", "_blank");
   if (!w) return mostrarMensaje("⚠️ Permite ventanas emergentes", "warning");
-  const head = `<meta charset="utf-8"><title>Ganancias</title>
+  const title = "Análisis de ganancias";
+  const sub = [
+    filtros.desde ? `Desde: ${filtros.desde.toISOString().slice(0,10)}` : "Desde: —",
+    filtros.hasta ? `Hasta: ${filtros.hasta.toISOString().slice(0,10)}` : "Hasta: —",
+    `Categoría: ${filtros.categoria || "Todas"}`,
+    `Proveedor: ${filtros.proveedor || "Todos"}`
+  ].join("  |  ");
+  const head = `<meta charset="utf-8"><title>${title}</title>
     <style>
-      body{font-family:Arial, sans-serif; padding:20px;}
-      h1{font-size:18px;margin:0 0 10px;}
-      .k{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 16px;}
-      .box{border:1px solid #ddd;padding:10px;border-radius:10px;}
+      :root{--g:#10b981;--b:#111827;--m:#6b7280;--bd:#e5e7eb;}
+      body{font-family:Arial, sans-serif; padding:22px; color:var(--b);}
+      .hdr{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+      .logo{width:40px;height:40px;object-fit:contain;border-radius:10px;border:1px solid var(--bd);padding:6px;background:#fff;}
+      h1{font-size:18px;margin:0;}
+      .sub{color:var(--m);font-size:12px;margin-top:2px;}
+      .box{border:1px solid var(--bd);padding:12px;border-radius:12px;margin:10px 0;}
+      .k{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;}
+      .k .box{margin:0;}
+      .k .v{font-size:16px;font-weight:900;}
       table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;}
-      th,td{border:1px solid #ddd;padding:6px;text-align:left;}
-      th{background:#f5f5f5;}
+      th,td{border:1px solid var(--bd);padding:6px;text-align:left;vertical-align:top;}
+      th{background:#f9fafb;font-weight:900;}
+      .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .right{text-align:right;}
+      .small{font-size:11px;color:var(--m);}
     </style>`;
   const body = `
-    <h1>Análisis de ganancias</h1>
-    <div class="box">
-      <div>Desde: ${filtros.desde.toISOString().slice(0,10)} — Hasta: ${filtros.hasta.toISOString().slice(0,10)}</div>
-      <div>Categoría: ${filtros.categoria || "Todas"} — Proveedor: ${filtros.proveedor || "Todos"}</div>
+    <div class="hdr">
+      <img class="logo" src="${b.logoUrl}" onerror="this.style.display='none'">
+      <div>
+        <div style="font-weight:900;">${b.nombre}</div>
+        <h1>${title}</h1>
+        <div class="sub">${sub}</div>
+      </div>
     </div>
     <div class="k">
-      <div class="box"><div>Ingresos</div><div style="font-size:18px;font-weight:800;">${_fmtS(res.ingresos)}</div></div>
-      <div class="box"><div>Costos</div><div style="font-size:18px;font-weight:800;">${_fmtS(res.costos)}</div></div>
-      <div class="box"><div>Egresos op.</div><div style="font-size:18px;font-weight:800;">${_fmtS(egresosOp)}</div></div>
-      <div class="box"><div>Utilidad</div><div style="font-size:18px;font-weight:800;">${_fmtS(utilidad)}</div></div>
+      <div class="box"><div class="small">Ingresos</div><div class="v" style="color:#60a5fa;">${_fmtS(res.ingresos)}</div></div>
+      <div class="box"><div class="small">Costos</div><div class="v" style="color:#f87171;">${_fmtS(res.costos)}</div></div>
+      <div class="box"><div class="small">Egresos op.</div><div class="v" style="color:#f59e0b;">${_fmtS(egresosOp)}</div></div>
+      <div class="box"><div class="small">Utilidad</div><div class="v" style="color:var(--g);">${_fmtS(utilidad)}</div></div>
     </div>
-    ${img ? `<div class="box"><div style="margin-bottom:6px;">Tendencia</div><img src="${img}" style="width:100%;max-height:220px;object-fit:contain;"></div>` : ""}
     <div class="box">
-      <div style="font-weight:800;margin-bottom:8px;">Margen por producto</div>
+      <div style="font-weight:900;margin-bottom:6px;">Descripción de columnas</div>
+      <div class="small"><span class="mono">Producto:</span> Nombre del producto.</div>
+      <div class="small"><span class="mono">Cant:</span> Unidades vendidas en el período.</div>
+      <div class="small"><span class="mono">Ingresos:</span> Total vendido (S/).</div>
+      <div class="small"><span class="mono">Costos:</span> Costo de adquisición (S/).</div>
+      <div class="small"><span class="mono">Utilidad:</span> Ingresos - costos.</div>
+      <div class="small"><span class="mono">Margen:</span> Utilidad / ingresos (porcentaje).</div>
+    </div>
+    ${img ? `<div class="box"><div style="font-weight:900;margin-bottom:6px;">Tendencia</div><img src="${img}" style="width:100%;max-height:220px;object-fit:contain;"></div>` : ""}
+    <div class="box">
+      <div style="font-weight:900;margin-bottom:8px;">Margen por producto</div>
       <table>
-        <thead><tr><th>Producto</th><th>Código</th><th>Cant</th><th>Ingresos</th><th>Costos</th><th>Utilidad</th><th>Margen</th></tr></thead>
+        <thead><tr><th>Producto</th><th class="right">Cant</th><th class="right">Ingresos</th><th class="right">Costos</th><th class="right">Utilidad</th><th class="right">Margen</th></tr></thead>
         <tbody>
           ${(res.rows || []).slice(0, 200).map(r => {
             const margen = r.ingresos > 0 ? (r.utilidad / r.ingresos) * 100 : 0;
-            return `<tr><td>${r.producto}</td><td>${r.codigo}</td><td>${r.cant}</td><td>${_fmtS(r.ingresos)}</td><td>${_fmtS(r.costos)}</td><td>${_fmtS(r.utilidad)}</td><td>${margen.toFixed(1)}%</td></tr>`;
+            return `<tr><td>${r.producto}</td><td class="mono right">${r.cant}</td><td class="mono right">${_fmtS(r.ingresos)}</td><td class="mono right">${_fmtS(r.costos)}</td><td class="mono right">${_fmtS(r.utilidad)}</td><td class="mono right">${margen.toFixed(1)}%</td></tr>`;
           }).join("")}
         </tbody>
       </table>

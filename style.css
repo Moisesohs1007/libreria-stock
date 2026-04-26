@@ -275,6 +275,7 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
 
 /* HISTORIAL */
 .hist-row{display:grid;grid-template-columns:1.4fr 2fr .8fr .8fr;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:.86rem;}
+.hist-row3{grid-template-columns:1.4fr 2fr .8fr;}
 .hist-row.hdr{background:var(--surface-2);font-weight:900;font-size:.78rem;color:var(--muted);}
 .caja-total{font-size:2.1rem;font-weight:900;color:var(--green);text-align:center;padding:18px 10px;}
 

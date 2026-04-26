@@ -469,8 +469,9 @@
           <div><label class="input-label">Hasta</label><input type="date" id="filtro-hasta" class="input-field" style="width:auto;"></div>
           <button onclick="filtrarHistorial()" class="btn btn-primary">Filtrar</button>
           <button onclick="exportarHistorialExcel()" class="btn btn-excel">Exportar</button>
+          <button onclick="exportarHistorialPDF()" class="btn" style="background:#eee;">PDF</button>
         </div>
-        <div class="hist-row hdr"><span>FECHA/HORA</span><span>PRODUCTO</span><span>PRECIO</span><span>C"DIGO</span></div>
+        <div class="hist-row hist-row3 hdr"><span>FECHA/HORA</span><span>PRODUCTO</span><span>PRECIO</span></div>
         <div id="historial-lista"><div style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Cargando...</div></div>
       </div>
     </div>
@@ -530,8 +531,8 @@
         <div class="card-title">Margen por producto</div>
         <div style="overflow-x:auto;">
           <table class="tabla">
-            <thead><tr><th>Producto</th><th>Código</th><th>Cant</th><th>Ingresos</th><th>Costos</th><th>Utilidad</th><th>Margen</th></tr></thead>
-            <tbody id="gan-tabla"><tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
+            <thead><tr><th>Producto</th><th>Cant</th><th>Ingresos</th><th>Costos</th><th>Utilidad</th><th>Margen</th></tr></thead>
+            <tbody id="gan-tabla"><tr><td colspan="6" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
           </table>
         </div>
       </div>

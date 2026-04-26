@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Report export utils — tests</title>
+    <style>
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; padding: 16px; }
+      .ok { color: #16a34a; font-weight: 900; }
+      .bad { color: #dc2626; font-weight: 900; }
+      pre { background: #0b1020; color: #e5e7eb; padding: 12px; border-radius: 12px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Report export utils — tests</h1>
+    <div id="out">Ejecutando…</div>
+    <pre id="log"></pre>
+
+    <script type="module">
+      import { buildVentasExport, buildMovimientosExport } from "../report_export_utils.js";
+
+      const out = document.getElementById("out");
+      const log = document.getElementById("log");
+      const lines = [];
+
+      function assert(cond, msg) {
+        if (!cond) throw new Error(msg);
+      }
+
+      function fakeTs(dateStr) {
+        return { toDate: () => new Date(dateStr) };
+      }
+
+      try {
+        const ventas = [
+          { fecha: "2026-04-03T10:00:00.000Z", nombre: "B", cantidad: 1, precio_unitario: 2 },
+          { fecha: new Date("2026-04-01T09:00:00.000Z"), nombre: "A", cantidad: 2, total: 10 },
+          { fecha: fakeTs("2026-04-02T08:00:00.000Z"), nombre: "C", cantidad: 1, precio_unitario: 3 }
+        ];
+        const builtV = buildVentasExport(ventas);
+        assert(builtV.rows.length === 3, "ventas: length");
+        assert(builtV.rows[0].Fecha === "2026-04-01", "ventas: orden asc por fecha");
+        assert(!("Código" in builtV.rows[0]), "ventas: no incluye Código");
+        assert(builtV.stats.ventas === 3, "ventas: stats ventas");
+        assert(Number(builtV.stats.total) > 0, "ventas: stats total");
+        lines.push("OK  ventasExport orden + sin código");
+
+        const movs = [
+          { fecha: "2026-04-03T00:00:00.000Z", tipo: "egreso", monto: 5, cuenta: "Caja" },
+          { fecha: fakeTs("2026-04-01T00:00:00.000Z"), tipo: "ingreso", monto: 10, cuenta: "Caja" },
+          { fecha: new Date("2026-04-02T00:00:00.000Z"), tipo: "egreso", monto: 2, cuenta: "Caja" }
+        ];
+        const builtM = buildMovimientosExport(movs);
+        assert(builtM.rows.length === 3, "movs: length");
+        assert(builtM.rows[0].Fecha === "2026-04-01", "movs: orden asc por fecha");
+        assert(builtM.stats.movimientos === 3, "movs: stats movimientos");
+        assert(Number(builtM.stats.ingresos) === 10, "movs: stats ingresos");
+        assert(Number(builtM.stats.egresos) === 7, "movs: stats egresos");
+        lines.push("OK  movimientosExport orden + stats");
+
+        out.textContent = "✅ Todos los tests pasaron";
+        out.className = "ok";
+      } catch (e) {
+        out.textContent = "❌ Falló";
+        out.className = "bad";
+        lines.push("ERR " + (e?.message || String(e)));
+      }
+
+      log.textContent = lines.join("\n");
+    </script>
+  </body>
+</html>
+

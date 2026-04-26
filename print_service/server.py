@@ -151,9 +151,9 @@ def create_app():
       where, params = build_where(request.args)
     except ValueError as e:
       return jsonify({"error": str(e)}), 400
-    rows = dbmod.query_print_jobs(conn, where, params, order_sql="ORDER BY id ASC", limit=20000)
+    rows = dbmod.query_print_jobs(conn, where, params, order_sql="ORDER BY ts_created ASC, id ASC", limit=20000)
     totals = dbmod.query_totals(conn, where, params)
-    data = export_excel(rows, totals)
+    data = export_excel(rows, totals, company_name="Librería Virgen de la Puerta", logo_path=logo_path, title="Reporte de Impresiones")
     fname = f"impresiones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return Response(
       data,
@@ -170,7 +170,7 @@ def create_app():
       where, params = build_where(request.args)
     except ValueError as e:
       return jsonify({"error": str(e)}), 400
-    rows = dbmod.query_print_jobs(conn, where, params, order_sql="ORDER BY id ASC", limit=5000)
+    rows = dbmod.query_print_jobs(conn, where, params, order_sql="ORDER BY ts_created ASC, id ASC", limit=5000)
     totals = dbmod.query_totals(conn, where, params)
     data = export_pdf(rows, totals, logo_path=logo_path)
     fname = f"impresiones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"

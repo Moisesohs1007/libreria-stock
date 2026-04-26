@@ -5,16 +5,44 @@ from datetime import datetime
 
 def _ensure_openpyxl():
   import openpyxl
+  from openpyxl.drawing.image import Image as XLImage
   from openpyxl.styles import Alignment, Font, PatternFill
-  return openpyxl, Alignment, Font, PatternFill
+  return openpyxl, XLImage, Alignment, Font, PatternFill
 
 
-def export_excel(rows, totals, title="Conteo de impresiones"):
-  openpyxl, Alignment, Font, PatternFill = _ensure_openpyxl()
+def export_excel(rows, totals, company_name="Librería Virgen de la Puerta", logo_path=None, title="Reporte de Impresiones"):
+  openpyxl, XLImage, Alignment, Font, PatternFill = _ensure_openpyxl()
 
   wb = openpyxl.Workbook()
   ws = wb.active
   ws.title = "Impresiones"
+
+  ws.merge_cells("A1:L1")
+  ws["A1"] = company_name
+  ws["A1"].font = Font(bold=True, size=14, color="0F172A")
+  ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
+
+  ws.merge_cells("A2:L2")
+  ws["A2"] = title
+  ws["A2"].font = Font(bold=True, size=12, color="111827")
+  ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
+
+  now = datetime.now().astimezone().isoformat(timespec="seconds")
+  ws.merge_cells("A3:L3")
+  ws["A3"] = now
+  ws["A3"].font = Font(size=10, color="6B7280")
+  ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
+
+  if logo_path and os.path.exists(logo_path):
+    try:
+      img = XLImage(logo_path)
+      img.width = 70
+      img.height = 70
+      ws.add_image(img, "L1")
+    except Exception:
+      pass
+
+  ws.append([])
 
   headers = [
     "ID",
@@ -33,13 +61,15 @@ def export_excel(rows, totals, title="Conteo de impresiones"):
 
   hfill = PatternFill("solid", fgColor="0F172A")
   hfont = Font(bold=True, color="FFFFFF")
+  header_row = ws.max_row + 1
   for col, h in enumerate(headers, 1):
-    c = ws.cell(row=1, column=col, value=h)
+    c = ws.cell(row=header_row, column=col, value=h)
     c.fill = hfill
     c.font = hfont
     c.alignment = Alignment(horizontal="center")
 
-  for i, r in enumerate(rows, 2):
+  data_start = header_row + 1
+  for i, r in enumerate(rows, data_start):
     ws.cell(i, 1, r.get("id"))
     ws.cell(i, 2, r.get("ts_created"))
     ws.cell(i, 3, r.get("ts_completed"))
@@ -57,18 +87,37 @@ def export_excel(rows, totals, title="Conteo de impresiones"):
   for i, w in enumerate(widths, 1):
     ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-  last_row = len(rows) + 1
+  last_row = len(rows) + header_row
   ws.append([])
-  ws.append(["", "", "", "", "", "TOTAL CONFIRMADAS", "", f"=SUM(H2:H{last_row})"])
-  ws.append(["", "", "", "", "", "TOTAL ESTIMADAS", "", f"=SUM(I2:I{last_row})"])
+  ws.append(["", "", "", "", "", "TOTAL CONFIRMADAS", "", f"=SUM(H{data_start}:H{last_row})"])
+  ws.append(["", "", "", "", "", "TOTAL ESTIMADAS", "", f"=SUM(I{data_start}:I{last_row})"])
   ws.append(["", "", "", "", "", "TOTAL BN (CONF)", "", totals.get("pages_bn", 0)])
   ws.append(["", "", "", "", "", "TOTAL COLOR (CONF)", "", totals.get("pages_color", 0)])
   ws.append(["", "", "", "", "", "TRABAJOS OK", "", totals.get("completed_jobs", 0)])
   ws.append(["", "", "", "", "", "TRABAJOS FALLIDOS", "", totals.get("failed_jobs", 0)])
 
-  meta = wb.create_sheet("Info")
-  meta["A1"] = title
-  meta["A2"] = datetime.now().astimezone().isoformat(timespec="seconds")
+  meta = wb.create_sheet("Columnas")
+  meta["A1"] = "Columna"
+  meta["B1"] = "Descripción"
+  meta["A1"].font = Font(bold=True)
+  meta["B1"].font = Font(bold=True)
+  cols = [
+    ("ID", "ID del trabajo de impresión."),
+    ("Fecha creación", "Timestamp de creación del job."),
+    ("Fecha completado", "Timestamp de completado del job."),
+    ("Impresora", "Nombre de impresora detectada."),
+    ("Usuario", "Usuario/host asociado."),
+    ("Documento", "Nombre del documento (si disponible)."),
+    ("Tipo", "BN o Color (según detección)."),
+    ("Confirmadas", "Páginas confirmadas por job."),
+    ("Estimadas (copias)", "Estimación de páginas/copias (si aplica)."),
+    ("Copias", "Copias solicitadas."),
+    ("Estado", "Estado del job."),
+    ("Error", "Código/error del job.")
+  ]
+  for i, (c, d) in enumerate(cols, 2):
+    meta.cell(i, 1, c)
+    meta.cell(i, 2, d)
 
   bio = io.BytesIO()
   wb.save(bio)
