@@ -7,12 +7,15 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db } from './firebase-config.js?v=20260422e';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260422e';
+import { db, storage } from './firebase-config.js?v=20260426b';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260426b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
-  increment, deleteDoc, Timestamp, runTransaction
+  increment, deleteDoc, Timestamp, runTransaction, setDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  ref as storageRef, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // =============================================
 // CONFIGURACIÓN DE INTEGRACIONES EXTERNAS
@@ -30,6 +33,9 @@ const ADMIN_PASS = "virpu2010";
 const scannerInput = document.getElementById("scanner");
 let todosLosProductos  = [];
 let todasLasVentas     = [];
+let todasLasCategorias = [];
+let todosLosProveedores = [];
+let todosLosMovimientos = [];
 let rolActual          = null; 
 let nombreVendedor     = "";
 let listenersIniciados = false;
@@ -58,6 +64,47 @@ function _precioVenta(p) {
 
 function _precioCompra(p) {
   return _toNum(p?.precio_compra ?? p?.precioCompra ?? 0);
+}
+
+function _fmtS(n) {
+  return `S/${_toNum(n).toFixed(2)}`;
+}
+
+function _parseDateOnly(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function _endOfDay(d) {
+  if (!d) return null;
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function _tsToDate(x) {
+  if (!x) return null;
+  if (x?.toDate) return x.toDate();
+  const d = new Date(x);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+async function _auditLog(action, col, docId, before, after) {
+  try {
+    const { rol, nombre, user_id, usuario } = leerSesion();
+    await addDoc(collection(db, "audit_logs"), {
+      action,
+      col,
+      docId: docId || "",
+      before: before || null,
+      after: after || null,
+      ts: new Date(),
+      actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" },
+    });
+  } catch {}
 }
 
 // =============================================
@@ -416,6 +463,7 @@ function iniciarListeners() {
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _rebuildProductoIndex();
       actualizarUIAdmin();
+      if (typeof window._finRenderAll === "function") window._finRenderAll();
     } catch {
       mostrarMensaje("⚠️ No se pudieron cargar productos (red/firewall)", "warning");
     }
@@ -428,6 +476,7 @@ function iniciarListeners() {
       todosLosProductos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _rebuildProductoIndex();
       actualizarUIAdmin();
+      if (typeof window._finRenderAll === "function") window._finRenderAll();
       _updateLowStockBanner();
       _drainPendingScans();
     },
@@ -465,6 +514,16 @@ function iniciarListeners() {
   onSnapshot(collection(db,"vendedores"), snap => {
     const lista = snap.docs.map(d => ({id:d.id,...d.data()}));
     renderizarVendedores(lista);
+  });
+
+  onSnapshot(collection(db, "fin_categorias"), snap => {
+    todasLasCategorias = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (typeof window._finRenderAll === "function") window._finRenderAll();
+  });
+
+  onSnapshot(collection(db, "fin_proveedores"), snap => {
+    todosLosProveedores = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (typeof window._finRenderAll === "function") window._finRenderAll();
   });
 }
 
@@ -565,7 +624,7 @@ function renderizarTabla(prods) {
       <td class="mono" style="font-weight:900;color:var(--green);">S/ ${pv.toFixed(2)}</td>
       <td class="mono" style="font-weight:900;color:#475569;">S/ ${pc.toFixed(2)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap;">
-        <button onclick="abrirEdicion('${p.id}','${n}',${p.stock},${pv},${pc})" class="btn btn-edit">✏️</button>
+        <button onclick="abrirEdicion('${p.id}')" class="btn btn-edit">✏️</button>
         <button onclick="eliminarProducto('${p.id}','${n}')" class="btn btn-danger">🗑</button>
       </td>
     </tr>`;
@@ -726,6 +785,8 @@ window.imprimirEtiquetas = function() {
 
 window.agregarProducto = async function() {
   const nombre=document.getElementById("nombre").value.trim();
+  const categoria = document.getElementById("prod-categoria")?.value?.trim() || "";
+  const proveedor = document.getElementById("prod-proveedor")?.value?.trim() || "";
   const stock=parseInt(document.getElementById("stock").value);
   const precioVenta=parseFloat(document.getElementById("precio-venta").value);
   const precioCompra=parseFloat(document.getElementById("precio-compra").value);
@@ -737,18 +798,22 @@ window.agregarProducto = async function() {
   try{
     const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
     const precio_venta = precioVenta;
-    await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio_venta,precio_compra,precio:precio_venta,creadoEn:new Date()});
+    await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio_venta,precio_compra,precio:precio_venta,categoria,proveedor,creadoEn:new Date()});
     mostrarMensaje(`✅ "${nombre}" agregado`,"ok");
-    ["nombre","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
+    ["nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
   }catch(e){mostrarMensaje("❌ Error: "+e.message,"error");}
 };
 
-window.abrirEdicion = function(id,nombre,stock,precioVenta,precioCompra){
+window.abrirEdicion = function(id){
+  const p = (todosLosProductos || []).find(x => x?.id === id) || null;
+  if (!p) return mostrarMensaje("⚠️ Producto no encontrado", "warning");
   document.getElementById("edit-id").value    =id;
-  document.getElementById("edit-nombre").value=nombre;
-  document.getElementById("edit-stock").value =stock;
-  document.getElementById("edit-precio-venta").value=precioVenta;
-  document.getElementById("edit-precio-compra").value=precioCompra;
+  document.getElementById("edit-nombre").value=String(p.nombre || "");
+  document.getElementById("edit-categoria").value=String(p.categoria || "");
+  document.getElementById("edit-proveedor").value=String(p.proveedor || "");
+  document.getElementById("edit-stock").value =_toNum(p.stock);
+  document.getElementById("edit-precio-venta").value=_precioVenta(p);
+  document.getElementById("edit-precio-compra").value=_precioCompra(p);
   const modal = document.getElementById("modal-editar");
   if (modal) modal.classList.add("active");
 };
@@ -756,6 +821,8 @@ window.abrirEdicion = function(id,nombre,stock,precioVenta,precioCompra){
 window.guardarEdicion = async function(){
   const id    = document.getElementById("edit-id").value;
   const nombre= document.getElementById("edit-nombre").value.trim();
+  const categoria = document.getElementById("edit-categoria")?.value?.trim() || "";
+  const proveedor = document.getElementById("edit-proveedor")?.value?.trim() || "";
   const stock = parseInt(document.getElementById("edit-stock").value);
   const precioVenta= parseFloat(document.getElementById("edit-precio-venta").value);
   const precioCompra= parseFloat(document.getElementById("edit-precio-compra").value);
@@ -767,7 +834,7 @@ window.guardarEdicion = async function(){
   try {
     const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
     const precio_venta = precioVenta;
-    await updateDoc(doc(db, "productos", id), { nombre, stock, precio_venta, precio_compra, precio: precio_venta });
+    await updateDoc(doc(db, "productos", id), { nombre, categoria, proveedor, stock, precio_venta, precio_compra, precio: precio_venta });
     mostrarMensaje("✅ Producto actualizado", "ok");
     cerrarModal("modal-editar");
   } catch (e) {
@@ -822,6 +889,8 @@ window.confirmarImportacion = async function() {
     } catch {}
     const nombre = String(lower["nombre"] ?? "").trim();
     const stock  = parseInt(lower["stock"] ?? 0);
+    const categoria = String(lower["categoría"] ?? lower["categoria"] ?? lower["category"] ?? "").trim();
+    const proveedor = String(lower["proveedor"] ?? lower["supplier"] ?? "").trim();
     const precioVenta = parseFloat(
       lower["precio venta"] ?? lower["precio_venta"] ?? lower["precio-venta"] ??
       lower["venta"] ?? lower["precio"] ?? lower["precio s/"] ?? 0
@@ -834,7 +903,7 @@ window.confirmarImportacion = async function() {
     try {
       const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
       const precio_venta = Number.isFinite(precioVenta) ? precioVenta : 0;
-      await addDoc(collection(db,"productos"),{codigo:"LIB-"+Date.now().toString().slice(-8),nombre,stock,precio_venta,precio_compra,precio:precio_venta,creadoEn:new Date()});
+      await addDoc(collection(db,"productos"),{codigo:"LIB-"+Date.now().toString().slice(-8),nombre,stock,precio_venta,precio_compra,precio:precio_venta,categoria,proveedor,creadoEn:new Date()});
       ok++;
     } catch(e) {}
   }
@@ -849,14 +918,14 @@ window.cancelarImportacion = function() {
 };
 
 window.descargarPlantilla = function() {
-  const ws = XLSX.utils.json_to_sheet([{Nombre:"Producto Ejemplo", Stock:10, "Precio Venta":5.00, "Precio Compra":3.20}]);
+  const ws = XLSX.utils.json_to_sheet([{Nombre:"Producto Ejemplo", Categoría:"Útiles", Proveedor:"Distribuidora X", Stock:10, "Precio Venta":5.00, "Precio Compra":3.20}]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
   XLSX.writeFile(wb, "plantilla_productos.xlsx");
 };
 
 window.exportarExcel = function(){
-  const datos=todosLosProductos.map(p=>({Nombre:p.nombre,Código:p.codigo,Stock:p.stock,"Precio Venta":_precioVenta(p),"Precio Compra":_precioCompra(p)}));
+  const datos=todosLosProductos.map(p=>({Nombre:p.nombre,Categoría:p.categoria||"",Proveedor:p.proveedor||"",Código:p.codigo,Stock:p.stock,"Precio Venta":_precioVenta(p),"Precio Compra":_precioCompra(p)}));
   const ws=XLSX.utils.json_to_sheet(datos);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Inventario");
@@ -1210,14 +1279,18 @@ async function procesarCodigo(codigo, meta) {
       const ventaRef = doc(collection(db, "ventas"));
       const cant = 1;
       const unit = _toNum(data.precio_venta ?? data.precio ?? p.precio_venta ?? p.precio ?? 0);
+      const costoUnit = _toNum(data.precio_compra ?? p.precio_compra ?? 0);
       const total = unit * cant;
       tx.set(ventaRef, {
         codigo: data.codigo ?? p.codigo ?? codigo,
         nombre: data.nombre ?? p.nombre ?? "",
         cantidad: cant,
         precio_unitario: unit,
+        costo_unitario: costoUnit,
         total,
         precio: total,
+        impuesto_monto: 0,
+        descuento_monto: 0,
         fecha: new Date(),
         vendedor: meta?.vendedor || nombreVendedor || "Admin",
         rol: meta?.rol || rolActual || "",
@@ -2835,5 +2908,619 @@ window._impAfterLogin = function() {
     impUpdateVendorWidget().catch(() => {});
   }, 30000);
 };
+
+function _requireAdmin() {
+  if (rolActual !== "admin") {
+    mostrarMensaje("⛔ Solo Admin", "error");
+    return false;
+  }
+  return true;
+}
+
+function _normName(v) {
+  return String(v || "").trim().replace(/\s+/g, " ");
+}
+
+function _uniqSorted(arr) {
+  const set = new Set();
+  for (const x of (arr || [])) {
+    const s = String(x || "").trim();
+    if (!s) continue;
+    set.add(s);
+  }
+  return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function _setSelectOptions(el, values, firstLabel) {
+  if (!el) return;
+  const cur = el.value;
+  const opts = [];
+  if (firstLabel !== undefined) opts.push(`<option value="">${firstLabel}</option>`);
+  for (const v of (values || [])) {
+    const safe = String(v).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    opts.push(`<option value="${safe}">${safe}</option>`);
+  }
+  el.innerHTML = opts.join("");
+  try { el.value = cur; } catch {}
+}
+
+function _ventasInRange(from, to) {
+  const f = (todasLasVentas || []).filter(v => {
+    const d = _tsToDate(v.fecha);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  });
+  return f;
+}
+
+function _ventaLineNet(v) {
+  const cant = _toNum(v?.cantidad) || 1;
+  const unit = _toNum(v?.precio_unitario) || _toNum(v?.precio) || 0;
+  const base = unit * cant;
+  const desc = _toNum(v?.descuento_monto);
+  const imp = _toNum(v?.impuesto_monto);
+  const net = base - desc + imp;
+  const costo = (_toNum(v?.costo_unitario) || 0) * cant;
+  return { cant, unit, base, desc, imp, net, costo };
+}
+
+function _gananciasBuildUiFilters() {
+  const desde = _parseDateOnly(document.getElementById("gan-desde")?.value || "");
+  const hasta = _endOfDay(_parseDateOnly(document.getElementById("gan-hasta")?.value || ""));
+  const categoria = String(document.getElementById("gan-categoria")?.value || "").trim();
+  const proveedor = String(document.getElementById("gan-proveedor")?.value || "").trim();
+  return { desde, hasta, categoria, proveedor };
+}
+
+function _gananciasCompute(filters) {
+  const desde = filters?.desde || null;
+  const hasta = filters?.hasta || null;
+  const categoria = String(filters?.categoria || "").trim();
+  const proveedor = String(filters?.proveedor || "").trim();
+  const ventas = _ventasInRange(desde, hasta);
+  const byCode = new Map();
+  const series = new Map();
+  for (const v of ventas) {
+    const p = _productoIndex?.get?.(sanitizeScanCode(v?.codigo || "")) || (todosLosProductos || []).find(x => x?.codigo === v?.codigo) || null;
+    const pc = String(p?.categoria || "").trim();
+    const pv = String(p?.proveedor || "").trim();
+    if (categoria && pc !== categoria) continue;
+    if (proveedor && pv !== proveedor) continue;
+    const ln = _ventaLineNet(v);
+    const code = String(v?.codigo || p?.codigo || "").trim() || "—";
+    const name = String(v?.nombre || p?.nombre || "").trim() || "Producto";
+    const cur = byCode.get(code) || { codigo: code, producto: name, cant: 0, ingresos: 0, costos: 0, utilidad: 0 };
+    cur.cant += ln.cant;
+    cur.ingresos += ln.net;
+    cur.costos += ln.costo;
+    cur.utilidad = cur.ingresos - cur.costos;
+    byCode.set(code, cur);
+    const d = _tsToDate(v?.fecha) || new Date();
+    const k = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
+    const s = series.get(k) || { k, ingresos: 0, costos: 0, utilidad: 0 };
+    s.ingresos += ln.net;
+    s.costos += ln.costo;
+    s.utilidad = s.ingresos - s.costos;
+    series.set(k, s);
+  }
+  const rows = Array.from(byCode.values()).sort((a, b) => (b.utilidad - a.utilidad) || a.producto.localeCompare(b.producto));
+  const ingresos = rows.reduce((s, r) => s + r.ingresos, 0);
+  const costos = rows.reduce((s, r) => s + r.costos, 0);
+  const utilidadBruta = ingresos - costos;
+  const serie = Array.from(series.values()).sort((a, b) => a.k.localeCompare(b.k));
+  return { rows, ingresos, costos, utilidadBruta, serie, ventasCount: ventas.length };
+}
+
+async function _movFetchRange(from, to) {
+  const qy = query(
+    collection(db, "fin_movimientos"),
+    where("fecha", ">=", from),
+    where("fecha", "<=", to)
+  );
+  const snap = await getDocs(qy);
+  const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  arr.sort((a, b) => {
+    const da = _tsToDate(a.fecha) || new Date(0);
+    const dbb = _tsToDate(b.fecha) || new Date(0);
+    return dbb - da;
+  });
+  return arr;
+}
+
+function _movRangeFromUi() {
+  const modo = String(document.getElementById("movf-periodo")?.value || "rango");
+  const year = parseInt(document.getElementById("movf-year")?.value || "") || new Date().getFullYear();
+  const month = parseInt(document.getElementById("movf-month")?.value || "") || 0;
+  const tri = parseInt(document.getElementById("movf-tri")?.value || "") || 0;
+  const inpDesde = document.getElementById("movf-desde");
+  const inpHasta = document.getElementById("movf-hasta");
+  let from = null;
+  let to = null;
+  if (modo === "mensual" && year && month) {
+    from = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    to = new Date(year, month, 0, 23, 59, 59, 999);
+  } else if (modo === "trimestral" && year && tri) {
+    const m0 = (tri - 1) * 3;
+    from = new Date(year, m0, 1, 0, 0, 0, 0);
+    to = new Date(year, m0 + 3, 0, 23, 59, 59, 999);
+  } else if (modo === "anual" && year) {
+    from = new Date(year, 0, 1, 0, 0, 0, 0);
+    to = new Date(year, 12, 0, 23, 59, 59, 999);
+  } else {
+    const d = _parseDateOnly(inpDesde?.value || "");
+    const h = _endOfDay(_parseDateOnly(inpHasta?.value || ""));
+    if (d && h) { from = d; to = h; }
+    if (!from || !to) {
+      const n = new Date();
+      from = new Date(n.getFullYear(), n.getMonth(), 1, 0, 0, 0, 0);
+      to = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+  }
+  if (inpDesde) inpDesde.value = from.toISOString().slice(0, 10);
+  if (inpHasta) inpHasta.value = to.toISOString().slice(0, 10);
+  const doCompare = !!document.getElementById("movf-compare")?.checked;
+  let prev = null;
+  if (doCompare) {
+    const ms = (to.getTime() - from.getTime()) + 1;
+    const prevTo = new Date(from.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - ms + 1);
+    prev = { from: prevFrom, to: prevTo };
+  }
+  return { from, to, prev };
+}
+
+function _movTotals(arr) {
+  let ing = 0, egr = 0, imp = 0, desc = 0;
+  for (const m of (arr || [])) {
+    const tipo = String(m?.tipo || "").toLowerCase();
+    const monto = _toNum(m?.monto);
+    const imps = _toNum(m?.impuesto_monto);
+    const descuento = _toNum(m?.descuento_monto);
+    if (tipo === "ingreso") ing += monto;
+    if (tipo === "egreso") egr += monto;
+    imp += imps;
+    desc += descuento;
+  }
+  return { ing, egr, neto: ing - egr, imp, desc };
+}
+
+function _renderMovTabla(rows) {
+  const tbody = document.getElementById("mov-tabla");
+  if (!tbody) return;
+  if (!rows || !rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(m => {
+    const d = _tsToDate(m.fecha) || new Date();
+    const tipo = String(m.tipo || "");
+    const cat = String(m.categoria || "");
+    const cuenta = String(m.cuenta || "");
+    const desc = String(m.descripcion || "");
+    const monto = _fmtS(m.monto);
+    const imp = _fmtS(m.impuesto_monto);
+    const des = _fmtS(m.descuento_monto);
+    return `<tr>
+      <td class="mono">${d.toISOString().slice(0, 10)}</td>
+      <td>${tipo}</td>
+      <td>${cat}</td>
+      <td>${cuenta}</td>
+      <td style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${desc}</td>
+      <td class="mono" style="font-weight:800;">${monto}</td>
+      <td class="mono">${imp}</td>
+      <td class="mono">${des}</td>
+      <td><button class="btn btn-danger" style="padding:6px 10px;font-size:0.72rem;" onclick="movEliminar('${m.id}')">🗑</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function _renderMovEerr(cur, prev) {
+  const tbody = document.getElementById("mov-eerr");
+  const colComp = document.getElementById("eerr-col-comp");
+  if (!tbody) return;
+  const showPrev = !!prev;
+  if (colComp) colComp.style.display = showPrev ? "" : "none";
+  const row = (name, v1, v0) => {
+    const a = `<td>${name}</td><td class="mono" style="font-weight:900;">${_fmtS(v1)}</td>`;
+    const b = showPrev ? `<td class="mono" style="font-weight:900;">${_fmtS(v0)}</td>` : `<td style="display:none;"></td>`;
+    return `<tr>${a}${showPrev ? b : ""}</tr>`;
+  };
+  const rows = [];
+  rows.push(row("Ventas netas", cur.ventasNet, prev?.ventasNet || 0));
+  rows.push(row("Costo de ventas", cur.cogs, prev?.cogs || 0));
+  rows.push(row("Utilidad bruta", cur.ventasNet - cur.cogs, (prev?.ventasNet || 0) - (prev?.cogs || 0)));
+  rows.push(row("Otros ingresos", cur.otrosIng, prev?.otrosIng || 0));
+  rows.push(row("Gastos/Egresos", cur.egresos, prev?.egresos || 0));
+  rows.push(row("Utilidad neta", cur.utilidadNeta, prev?.utilidadNeta || 0));
+  tbody.innerHTML = rows.join("");
+}
+
+window._finRenderAll = function() {
+  try {
+    const prodCats = _uniqSorted((todosLosProductos || []).map(p => p.categoria || ""));
+    const prodProvs = _uniqSorted((todosLosProductos || []).map(p => p.proveedor || ""));
+    _setSelectOptions(document.getElementById("gan-categoria"), prodCats, "Todas");
+    _setSelectOptions(document.getElementById("gan-proveedor"), prodProvs, "Todos");
+  } catch {}
+  try {
+    const cats = _uniqSorted((todasLasCategorias || []).map(c => c.nombre || ""));
+    const provs = _uniqSorted((todosLosProveedores || []).map(p => p.nombre || ""));
+    _setSelectOptions(document.getElementById("mov-categoria"), cats, "Sin categoría");
+    _setSelectOptions(document.getElementById("mov-proveedor"), provs, "—");
+  } catch {}
+  try {
+    const catList = document.getElementById("cat-lista");
+    if (catList) {
+      const cats = _uniqSorted((todasLasCategorias || []).map(c => c.nombre || ""));
+      if (!cats.length) catList.innerHTML = `<div style="text-align:center;color:#aaa;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin categorías</div>`;
+      else catList.innerHTML = (todasLasCategorias || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""))).map(c => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(c.nombre || "")}</span>
+          <button class="btn btn-danger" style="padding:6px 10px;font-size:0.72rem;" onclick="catEliminar('${c.id}')">🗑</button>
+        </div>
+      `).join("");
+    }
+    const provList = document.getElementById("prov-lista");
+    if (provList) {
+      const provs = _uniqSorted((todosLosProveedores || []).map(p => p.nombre || ""));
+      if (!provs.length) provList.innerHTML = `<div style="text-align:center;color:#aaa;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin proveedores</div>`;
+      else provList.innerHTML = (todosLosProveedores || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""))).map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(p.nombre || "")}</span>
+          <button class="btn btn-danger" style="padding:6px 10px;font-size:0.72rem;" onclick="provEliminar('${p.id}')">🗑</button>
+        </div>
+      `).join("");
+    }
+  } catch {}
+};
+
+window.catAgregar = async function() {
+  if (!_requireAdmin()) return;
+  const raw = document.getElementById("cat-nombre")?.value || "";
+  const nombre = _normName(raw);
+  if (!nombre) return mostrarMensaje("⚠️ Ingresa un nombre", "warning");
+  const dup = (todasLasCategorias || []).some(c => String(c?.nombre || "").toLowerCase() === nombre.toLowerCase());
+  if (dup) return mostrarMensaje("⚠️ Ya existe", "warning");
+  try {
+    const ref = await addDoc(collection(db, "fin_categorias"), { nombre, creadoEn: new Date() });
+    await _auditLog("create", "fin_categorias", ref.id, null, { nombre });
+    const el = document.getElementById("cat-nombre"); if (el) el.value = "";
+    mostrarMensaje("✅ Categoría agregada", "ok");
+  } catch {
+    mostrarMensaje("❌ Error agregando categoría", "error");
+  }
+};
+
+window.catEliminar = async function(id) {
+  if (!_requireAdmin()) return;
+  if (!confirm("¿Eliminar categoría?")) return;
+  const before = (todasLasCategorias || []).find(x => x?.id === id) || null;
+  try {
+    await deleteDoc(doc(db, "fin_categorias", id));
+    await _auditLog("delete", "fin_categorias", id, before, null);
+    mostrarMensaje("🗑 Eliminado", "warning");
+  } catch {
+    mostrarMensaje("❌ Error eliminando", "error");
+  }
+};
+
+window.provAgregar = async function() {
+  if (!_requireAdmin()) return;
+  const raw = document.getElementById("prov-nombre")?.value || "";
+  const nombre = _normName(raw);
+  if (!nombre) return mostrarMensaje("⚠️ Ingresa un nombre", "warning");
+  const dup = (todosLosProveedores || []).some(p => String(p?.nombre || "").toLowerCase() === nombre.toLowerCase());
+  if (dup) return mostrarMensaje("⚠️ Ya existe", "warning");
+  try {
+    const ref = await addDoc(collection(db, "fin_proveedores"), { nombre, creadoEn: new Date() });
+    await _auditLog("create", "fin_proveedores", ref.id, null, { nombre });
+    const el = document.getElementById("prov-nombre"); if (el) el.value = "";
+    mostrarMensaje("✅ Proveedor agregado", "ok");
+  } catch {
+    mostrarMensaje("❌ Error agregando proveedor", "error");
+  }
+};
+
+window.provEliminar = async function(id) {
+  if (!_requireAdmin()) return;
+  if (!confirm("¿Eliminar proveedor?")) return;
+  const before = (todosLosProveedores || []).find(x => x?.id === id) || null;
+  try {
+    await deleteDoc(doc(db, "fin_proveedores", id));
+    await _auditLog("delete", "fin_proveedores", id, before, null);
+    mostrarMensaje("🗑 Eliminado", "warning");
+  } catch {
+    mostrarMensaje("❌ Error eliminando", "error");
+  }
+};
+
+async function _uploadComprobante(file, movId) {
+  if (!file) return null;
+  const max = 8 * 1024 * 1024;
+  if ((file.size || 0) > max) throw new Error("Archivo muy grande (máx 8MB)");
+  const safeName = String(file.name || "comprobante").replace(/[^\w.\-]+/g, "_");
+  const d = new Date();
+  const path = `comprobantes/${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}/${movId}_${safeName}`;
+  const r = storageRef(storage, path);
+  await uploadBytes(r, file);
+  const url = await getDownloadURL(r);
+  return { path, url, name: file.name || "", size: file.size || 0, type: file.type || "" };
+}
+
+window.movGuardar = async function() {
+  if (!_requireAdmin()) return;
+  const tipo = String(document.getElementById("mov-tipo")?.value || "").trim();
+  const fechaStr = String(document.getElementById("mov-fecha")?.value || "").trim();
+  const fecha = _parseDateOnly(fechaStr) || new Date();
+  const monto = _toNum(document.getElementById("mov-monto")?.value || 0);
+  const cuenta = _normName(document.getElementById("mov-cuenta")?.value || "");
+  const categoria = _normName(document.getElementById("mov-categoria")?.value || "");
+  const proveedor = _normName(document.getElementById("mov-proveedor")?.value || "");
+  const impuesto_monto = _toNum(document.getElementById("mov-impuesto")?.value || 0);
+  const descuento_monto = _toNum(document.getElementById("mov-descuento")?.value || 0);
+  const descripcion = _normName(document.getElementById("mov-desc")?.value || "");
+  const comprobante_url = _normName(document.getElementById("mov-doc")?.value || "");
+  const file = document.getElementById("mov-doc-file")?.files?.[0] || null;
+  if (tipo !== "ingreso" && tipo !== "egreso") return mostrarMensaje("⚠️ Tipo inválido", "warning");
+  if (!Number.isFinite(monto) || monto <= 0) return mostrarMensaje("⚠️ Monto inválido", "warning");
+  if (!cuenta) return mostrarMensaje("⚠️ Cuenta requerida", "warning");
+  const { rol, nombre, user_id, usuario } = leerSesion();
+  const movRef = doc(collection(db, "fin_movimientos"));
+  const base = {
+    tipo,
+    fecha,
+    monto,
+    cuenta,
+    categoria,
+    proveedor,
+    impuesto_monto,
+    descuento_monto,
+    descripcion,
+    comprobante_url,
+    comprobante: null,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" },
+  };
+  try {
+    await setDoc(movRef, base);
+    let comp = null;
+    if (file) comp = await _uploadComprobante(file, movRef.id);
+    if (comp) await updateDoc(doc(db, "fin_movimientos", movRef.id), { comprobante: comp, actualizadoEn: new Date() });
+    await _auditLog("create", "fin_movimientos", movRef.id, null, { ...base, comprobante: comp });
+    ["mov-monto","mov-cuenta","mov-impuesto","mov-descuento","mov-desc","mov-doc","mov-fecha"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    const fi = document.getElementById("mov-doc-file"); if (fi) fi.value = "";
+    mostrarMensaje("✅ Movimiento guardado", "ok");
+    await window.movActualizar();
+  } catch (e) {
+    mostrarMensaje(`❌ Error guardando: ${String(e?.message || e)}`, "error");
+  }
+};
+
+window.movEliminar = async function(id) {
+  if (!_requireAdmin()) return;
+  if (!confirm("¿Eliminar movimiento?")) return;
+  try {
+    const before = (todosLosMovimientos || []).find(x => x?.id === id) || null;
+    await deleteDoc(doc(db, "fin_movimientos", id));
+    await _auditLog("delete", "fin_movimientos", id, before, null);
+    mostrarMensaje("🗑 Eliminado", "warning");
+    await window.movActualizar();
+  } catch {
+    mostrarMensaje("❌ Error eliminando", "error");
+  }
+};
+
+window.movActualizar = async function() {
+  if (!_requireAdmin()) return;
+  const r = _movRangeFromUi();
+  try {
+    const rows = await _movFetchRange(r.from, r.to);
+    todosLosMovimientos = rows;
+    const tot = _movTotals(rows);
+    const elIng = document.getElementById("mov-ing");
+    const elEgr = document.getElementById("mov-egr");
+    const elNet = document.getElementById("mov-neto");
+    const elImp = document.getElementById("mov-imps");
+    if (elIng) elIng.textContent = _fmtS(tot.ing);
+    if (elEgr) elEgr.textContent = _fmtS(tot.egr);
+    if (elNet) elNet.textContent = _fmtS(tot.neto);
+    if (elImp) elImp.textContent = _fmtS(tot.imp);
+    _renderMovTabla(rows);
+    const ventas = _ventasInRange(r.from, r.to);
+    const ventasNet = ventas.reduce((s, v) => s + _ventaLineNet(v).net, 0);
+    const cogs = ventas.reduce((s, v) => s + _ventaLineNet(v).costo, 0);
+    const otrosIng = tot.ing;
+    const egresos = tot.egr;
+    const utilidadNeta = (ventasNet - cogs) + otrosIng - egresos;
+    let prevEerr = null;
+    if (r.prev) {
+      const prevRows = await _movFetchRange(r.prev.from, r.prev.to);
+      const prevTot = _movTotals(prevRows);
+      const prevVentas = _ventasInRange(r.prev.from, r.prev.to);
+      const prevVentasNet = prevVentas.reduce((s, v) => s + _ventaLineNet(v).net, 0);
+      const prevCogs = prevVentas.reduce((s, v) => s + _ventaLineNet(v).costo, 0);
+      const prevOtrosIng = prevTot.ing;
+      const prevEgr = prevTot.egr;
+      const prevUtil = (prevVentasNet - prevCogs) + prevOtrosIng - prevEgr;
+      prevEerr = { ventasNet: prevVentasNet, cogs: prevCogs, otrosIng: prevOtrosIng, egresos: prevEgr, utilidadNeta: prevUtil };
+    }
+    _renderMovEerr({ ventasNet, cogs, otrosIng, egresos, utilidadNeta }, prevEerr);
+  } catch (e) {
+    mostrarMensaje(`❌ Error actualizando: ${String(e?.message || e)}`, "error");
+  }
+};
+
+window.movExportarExcel = function() {
+  if (!_requireAdmin()) return;
+  const rows = (todosLosMovimientos || []).map(m => {
+    const d = _tsToDate(m.fecha) || new Date();
+    return {
+      Fecha: d.toISOString().slice(0, 10),
+      Tipo: m.tipo || "",
+      Categoría: m.categoria || "",
+      Cuenta: m.cuenta || "",
+      Proveedor: m.proveedor || "",
+      Descripción: m.descripcion || "",
+      Monto: _toNum(m.monto),
+      Impuesto: _toNum(m.impuesto_monto),
+      Descuento: _toNum(m.descuento_monto),
+      "Comprobante URL": m.comprobante_url || (m.comprobante?.url || ""),
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Movimientos");
+  XLSX.writeFile(wb, `movimientos_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
+};
+
+window.gananciasCalcular = async function() {
+  if (!_requireAdmin()) return;
+  const f = _gananciasBuildUiFilters();
+  if (!f.desde || !f.hasta) {
+    const n = new Date();
+    const d = new Date(n.getFullYear(), n.getMonth(), 1);
+    document.getElementById("gan-desde").value = d.toISOString().slice(0, 10);
+    document.getElementById("gan-hasta").value = n.toISOString().slice(0, 10);
+    f.desde = _parseDateOnly(document.getElementById("gan-desde").value);
+    f.hasta = _endOfDay(_parseDateOnly(document.getElementById("gan-hasta").value));
+  }
+  const res = _gananciasCompute(f);
+  const egresosOp = (await (async () => {
+    try {
+      const movs = await _movFetchRange(f.desde, f.hasta);
+      return _movTotals(movs).egr;
+    } catch { return 0; }
+  })());
+  const elIng = document.getElementById("gan-ingresos");
+  const elCos = document.getElementById("gan-costos");
+  const elOp = document.getElementById("gan-operativos");
+  const elUt = document.getElementById("gan-utilidad");
+  const utilidad = res.utilidadBruta - egresosOp;
+  if (elIng) elIng.textContent = _fmtS(res.ingresos);
+  if (elCos) elCos.textContent = _fmtS(res.costos);
+  if (elOp) elOp.textContent = _fmtS(egresosOp);
+  if (elUt) elUt.textContent = _fmtS(utilidad);
+  const tbody = document.getElementById("gan-tabla");
+  if (tbody) {
+    if (!res.rows.length) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>`;
+    else tbody.innerHTML = res.rows.map(r => {
+      const margen = r.ingresos > 0 ? (r.utilidad / r.ingresos) * 100 : 0;
+      return `<tr>
+        <td>${r.producto}</td>
+        <td class="mono">${r.codigo}</td>
+        <td class="mono">${r.cant.toLocaleString()}</td>
+        <td class="mono">${_fmtS(r.ingresos)}</td>
+        <td class="mono">${_fmtS(r.costos)}</td>
+        <td class="mono" style="font-weight:900;color:${r.utilidad>=0?"var(--green)":"#ef4444"};">${_fmtS(r.utilidad)}</td>
+        <td class="mono">${margen.toFixed(1)}%</td>
+      </tr>`;
+    }).join("");
+  }
+  try {
+    const canvas = document.getElementById("gan-chart-canvas");
+    if (!canvas || typeof Chart === "undefined") return;
+    const labels = res.serie.map(x => x.k);
+    const data = res.serie.map(x => x.utilidad);
+    if (window._ganChart) { try { window._ganChart.destroy(); } catch {} }
+    window._ganChart = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: { labels, datasets: [{ label: "Utilidad bruta", data, borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.15)", fill: true, tension: 0.25, pointRadius: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { ticks: { callback: (v) => `S/${Number(v).toFixed(0)}` } } } }
+    });
+  } catch {}
+  window._ganLast = { filtros: f, res, egresosOp, utilidad };
+};
+
+window.gananciasExportarExcel = function() {
+  if (!_requireAdmin()) return;
+  const last = window._ganLast;
+  if (!last) return mostrarMensaje("⚠️ Primero calcula", "warning");
+  const { filtros, res, egresosOp, utilidad } = last;
+  const resumen = [
+    { Campo: "Desde", Valor: filtros.desde ? filtros.desde.toISOString().slice(0, 10) : "" },
+    { Campo: "Hasta", Valor: filtros.hasta ? filtros.hasta.toISOString().slice(0, 10) : "" },
+    { Campo: "Categoría", Valor: filtros.categoria || "Todas" },
+    { Campo: "Proveedor", Valor: filtros.proveedor || "Todos" },
+    { Campo: "Ingresos", Valor: _toNum(res.ingresos) },
+    { Campo: "Costos", Valor: _toNum(res.costos) },
+    { Campo: "Egresos op.", Valor: _toNum(egresosOp) },
+    { Campo: "Utilidad", Valor: _toNum(utilidad) },
+  ];
+  const detalle = (res.rows || []).map(r => ({
+    Producto: r.producto,
+    Código: r.codigo,
+    Cantidad: r.cant,
+    Ingresos: _toNum(r.ingresos),
+    Costos: _toNum(r.costos),
+    Utilidad: _toNum(r.utilidad),
+    Margen: r.ingresos > 0 ? (r.utilidad / r.ingresos) : 0,
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), "Resumen");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), "Margen por producto");
+  XLSX.writeFile(wb, `ganancias_${new Date().toLocaleDateString("es-PE").replace(/\//g,"-")}.xlsx`);
+};
+
+window.gananciasExportarPDF = function() {
+  if (!_requireAdmin()) return;
+  const last = window._ganLast;
+  if (!last) return mostrarMensaje("⚠️ Primero calcula", "warning");
+  const { filtros, res, egresosOp, utilidad } = last;
+  const img = (() => {
+    try {
+      const c = document.getElementById("gan-chart-canvas");
+      if (!c) return "";
+      return c.toDataURL("image/png");
+    } catch { return ""; }
+  })();
+  const w = window.open("", "_blank");
+  if (!w) return mostrarMensaje("⚠️ Permite ventanas emergentes", "warning");
+  const head = `<meta charset="utf-8"><title>Ganancias</title>
+    <style>
+      body{font-family:Arial, sans-serif; padding:20px;}
+      h1{font-size:18px;margin:0 0 10px;}
+      .k{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 16px;}
+      .box{border:1px solid #ddd;padding:10px;border-radius:10px;}
+      table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;}
+      th,td{border:1px solid #ddd;padding:6px;text-align:left;}
+      th{background:#f5f5f5;}
+    </style>`;
+  const body = `
+    <h1>Análisis de ganancias</h1>
+    <div class="box">
+      <div>Desde: ${filtros.desde.toISOString().slice(0,10)} — Hasta: ${filtros.hasta.toISOString().slice(0,10)}</div>
+      <div>Categoría: ${filtros.categoria || "Todas"} — Proveedor: ${filtros.proveedor || "Todos"}</div>
+    </div>
+    <div class="k">
+      <div class="box"><div>Ingresos</div><div style="font-size:18px;font-weight:800;">${_fmtS(res.ingresos)}</div></div>
+      <div class="box"><div>Costos</div><div style="font-size:18px;font-weight:800;">${_fmtS(res.costos)}</div></div>
+      <div class="box"><div>Egresos op.</div><div style="font-size:18px;font-weight:800;">${_fmtS(egresosOp)}</div></div>
+      <div class="box"><div>Utilidad</div><div style="font-size:18px;font-weight:800;">${_fmtS(utilidad)}</div></div>
+    </div>
+    ${img ? `<div class="box"><div style="margin-bottom:6px;">Tendencia</div><img src="${img}" style="width:100%;max-height:220px;object-fit:contain;"></div>` : ""}
+    <div class="box">
+      <div style="font-weight:800;margin-bottom:8px;">Margen por producto</div>
+      <table>
+        <thead><tr><th>Producto</th><th>Código</th><th>Cant</th><th>Ingresos</th><th>Costos</th><th>Utilidad</th><th>Margen</th></tr></thead>
+        <tbody>
+          ${(res.rows || []).slice(0, 200).map(r => {
+            const margen = r.ingresos > 0 ? (r.utilidad / r.ingresos) * 100 : 0;
+            return `<tr><td>${r.producto}</td><td>${r.codigo}</td><td>${r.cant}</td><td>${_fmtS(r.ingresos)}</td><td>${_fmtS(r.costos)}</td><td>${_fmtS(r.utilidad)}</td><td>${margen.toFixed(1)}%</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  w.document.open();
+  w.document.write(`<html><head>${head}</head><body>${body}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch {} }, 300);
+};
+
+setTimeout(() => { try { window._finRenderAll(); } catch {} }, 500);
 
 impLoadCfg();

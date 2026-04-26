@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=20260426b">
@@ -296,6 +297,11 @@
         <button class="sidebar-btn"        id="sb-impresiones" onclick="cambiarTabSidebar('tab-impresiones','sb-impresiones','Conteo de Impresiones')">  Conteo de Impresiones</button>
         <button class="sidebar-btn"        id="sb-ricoh-rep"  onclick="cambiarTabSidebar('tab-ricoh-rep','sb-ricoh-rep','Ricoh MP5055')">  Ricoh MP5055</button>
 
+        <!-- FINANZAS -->
+        <div class="sb-group-title">Finanzas</div>
+        <button class="sidebar-btn"        id="sb-ganancias"  onclick="cambiarTabSidebar('tab-ganancias','sb-ganancias','Análisis de ganancias')">  Análisis de ganancias</button>
+        <button class="sidebar-btn"        id="sb-movimientos" onclick="cambiarTabSidebar('tab-movimientos','sb-movimientos','Ingresos y egresos')">  Ingresos y egresos</button>
+
         <!-- INSTALACIONES -->
         <div class="sb-group-title">Instalaciones</div>
         <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config. Ricoh MP5055')">  Ricoh MP5055</button>
@@ -342,6 +348,15 @@
           <button class="dt-drop-item" id="dt-fiadas"    onclick="selDt('tab-fiadas','dt-fiadas','Copias Fiadas','dtg-reportes')">Copias Fiadas</button>
           <button class="dt-drop-item" id="dt-impresiones" onclick="selDt('tab-impresiones','dt-impresiones','Conteo de Impresiones','dtg-reportes')">Conteo de Impresiones</button>
           <button class="dt-drop-item" id="dt-ricoh-rep" onclick="selDt('tab-ricoh-rep','dt-ricoh-rep','Ricoh MP5055','dtg-reportes')">Ricoh MP5055</button>
+        </div>
+      </div>
+
+      <!-- FINANZAS -->
+      <div class="dt-group" id="dtg-finanzas">
+        <button class="dt-group-btn" onclick="toggleDtGroup('dtg-finanzas')">Finanzas -</button>
+        <div class="dt-dropdown">
+          <button class="dt-drop-item" id="dt-ganancias" onclick="selDt('tab-ganancias','dt-ganancias','Análisis de ganancias','dtg-finanzas')">Análisis de ganancias</button>
+          <button class="dt-drop-item" id="dt-movimientos" onclick="selDt('tab-movimientos','dt-movimientos','Ingresos y egresos','dtg-finanzas')">Ingresos y egresos</button>
         </div>
       </div>
 
@@ -399,6 +414,10 @@
           <div class="card-title">o️ Agregar manual</div>
           <div class="mb-3"><label class="input-label">Nombre *</label><input id="nombre" class="input-field" placeholder="Ej: Cuaderno Universitario 100h"></div>
           <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Categoría</label><input id="prod-categoria" class="input-field" placeholder="Ej: Útiles"></div>
+            <div><label class="input-label">Proveedor</label><input id="prod-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
             <div><label class="input-label">Stock *</label><input id="stock" type="number" min="0" class="input-field" placeholder="50"></div>
             <div><label class="input-label">Precio venta S/ *</label><input id="precio-venta" type="number" step="0.01" min="0" class="input-field" placeholder="3.50"></div>
           </div>
@@ -413,7 +432,7 @@
           <div class="card-title">Importar desde Excel</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;margin-bottom:14px;line-height:1.6;">
             El archivo Excel debe tener estas columnas:<br>
-            <strong>Nombre | Stock | Precio Venta | Precio Compra</strong><br>
+            <strong>Nombre | Stock | Precio Venta | Precio Compra | (Opcional) Categoría | (Opcional) Proveedor</strong><br>
             El código se genera automáticamente.<br>
             La primera fila debe ser el encabezado.
           </div>
@@ -456,6 +475,171 @@
         <div class="card"><div class="card-title">Caja del mes</div>
           <div class="caja-total" id="caja-mes" style="color:#c084fc;">S/ 0.00</div>
           <div style="text-align:center;font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:#888;" id="caja-mes-count">0 ventas este mes</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB GANANCIAS -->
+    <div id="tab-ganancias" class="tab-panel">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title">Filtros</div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Desde</label><input type="date" id="gan-desde" class="input-field"></div>
+            <div><label class="input-label">Hasta</label><input type="date" id="gan-hasta" class="input-field"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Categoría</label><select id="gan-categoria" class="input-field"><option value="">Todas</option></select></div>
+            <div><label class="input-label">Proveedor</label><select id="gan-proveedor" class="input-field"><option value="">Todos</option></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="gananciasCalcular()" class="btn btn-primary" style="justify-content:center;">Calcular</button>
+            <button onclick="gananciasExportarExcel()" class="btn btn-excel" style="justify-content:center;">Excel</button>
+          </div>
+          <button onclick="gananciasExportarPDF()" class="btn" style="margin-top:10px;width:100%;justify-content:center;background:#eee;">PDF</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Resumen</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="stat-box"><div class="stat-num" id="gan-ingresos" style="color:#60a5fa;font-size:1.15rem;">S/0</div><div class="stat-label">Ingresos</div></div>
+            <div class="stat-box"><div class="stat-num" id="gan-costos" style="color:#f87171;font-size:1.15rem;">S/0</div><div class="stat-label">Costos</div></div>
+            <div class="stat-box"><div class="stat-num" id="gan-operativos" style="color:#f59e0b;font-size:1.15rem;">S/0</div><div class="stat-label">Egresos op.</div></div>
+            <div class="stat-box"><div class="stat-num" id="gan-utilidad" style="color:#10b981;font-size:1.15rem;">S/0</div><div class="stat-label">Utilidad</div></div>
+          </div>
+          <div style="margin-top:14px;">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#888;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Tendencia</div>
+            <div id="gan-chart" style="height:160px;border:1px solid var(--border);border-radius:12px;background:var(--paper);position:relative;">
+              <canvas id="gan-chart-canvas" style="width:100%;height:160px;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">Margen por producto</div>
+        <div style="overflow-x:auto;">
+          <table class="tabla">
+            <thead><tr><th>Producto</th><th>Código</th><th>Cant</th><th>Ingresos</th><th>Costos</th><th>Utilidad</th><th>Margen</th></tr></thead>
+            <tbody id="gan-tabla"><tr><td colspan="7" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB MOVIMIENTOS -->
+    <div id="tab-movimientos" class="tab-panel">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title">Registrar movimiento</div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Tipo</label><select id="mov-tipo" class="input-field"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select></div>
+            <div><label class="input-label">Fecha</label><input type="date" id="mov-fecha" class="input-field"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Monto S/</label><input type="number" step="0.01" min="0" id="mov-monto" class="input-field" placeholder="0.00"></div>
+            <div><label class="input-label">Cuenta</label><input id="mov-cuenta" class="input-field" placeholder="Caja / Banco / Yape..."></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Categoría</label><select id="mov-categoria" class="input-field"><option value="">Sin categoría</option></select></div>
+            <div><label class="input-label">Proveedor</label><select id="mov-proveedor" class="input-field"><option value="">—</option></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Impuesto S/</label><input type="number" step="0.01" min="0" id="mov-impuesto" class="input-field" placeholder="0.00"></div>
+            <div><label class="input-label">Descuento S/</label><input type="number" step="0.01" min="0" id="mov-descuento" class="input-field" placeholder="0.00"></div>
+          </div>
+          <div class="mb-3"><label class="input-label">Descripción</label><input id="mov-desc" class="input-field" placeholder="Detalle..."></div>
+          <div class="mb-3"><label class="input-label">Comprobante (archivo)</label><input type="file" id="mov-doc-file" class="input-field" accept=".pdf,image/*"></div>
+          <div class="mb-3"><label class="input-label">Comprobante (URL)</label><input id="mov-doc" class="input-field" placeholder="https://..."></div>
+          <button onclick="movGuardar()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar movimiento</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Reporte</div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="input-label">Período</label>
+              <select id="movf-periodo" class="input-field">
+                <option value="rango">Rango</option>
+                <option value="mensual">Mensual</option>
+                <option value="trimestral">Trimestral</option>
+                <option value="anual">Anual</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-end;justify-content:flex-end;">
+              <label style="display:flex;gap:8px;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;">
+                <input type="checkbox" id="movf-compare">
+                Comparar período anterior
+              </label>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Año</label><input type="number" id="movf-year" class="input-field" placeholder="2026"></div>
+            <div><label class="input-label">Mes</label>
+              <select id="movf-month" class="input-field">
+                <option value="">—</option><option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option><option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Trimestre</label>
+              <select id="movf-tri" class="input-field">
+                <option value="">—</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:flex-end;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#888;">
+              Usa Mensual/Trimestral/Anual o Rango
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Desde</label><input type="date" id="movf-desde" class="input-field"></div>
+            <div><label class="input-label">Hasta</label><input type="date" id="movf-hasta" class="input-field"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <button onclick="movActualizar()" class="btn btn-primary" style="justify-content:center;">Actualizar</button>
+            <button onclick="movExportarExcel()" class="btn btn-excel" style="justify-content:center;">Excel</button>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="stat-box"><div class="stat-num" id="mov-ing" style="color:#60a5fa;font-size:1.15rem;">S/0</div><div class="stat-label">Ingresos</div></div>
+            <div class="stat-box"><div class="stat-num" id="mov-egr" style="color:#f87171;font-size:1.15rem;">S/0</div><div class="stat-label">Egresos</div></div>
+            <div class="stat-box"><div class="stat-num" id="mov-neto" style="color:#10b981;font-size:1.15rem;">S/0</div><div class="stat-label">Neto</div></div>
+            <div class="stat-box"><div class="stat-num" id="mov-imps" style="color:#f59e0b;font-size:1.15rem;">S/0</div><div class="stat-label">Impuestos</div></div>
+          </div>
+          <div class="card" style="margin-top:12px;background:var(--paper);">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#888;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Estado de resultados</div>
+            <div style="overflow-x:auto;">
+              <table class="tabla" style="margin:0;">
+                <thead><tr><th>Concepto</th><th>Monto</th><th id="eerr-col-comp" style="display:none;">Período anterior</th></tr></thead>
+                <tbody id="mov-eerr">
+                  <tr><td colspan="3" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="margin-top:14px;">
+        <div class="card">
+          <div class="card-title">Categorías</div>
+          <div style="display:flex;gap:8px;">
+            <input id="cat-nombre" class="input-field" placeholder="Nueva categoría..." style="flex:1;">
+            <button onclick="catAgregar()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">+ Agregar</button>
+          </div>
+          <div id="cat-lista" style="margin-top:10px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Proveedores</div>
+          <div style="display:flex;gap:8px;">
+            <input id="prov-nombre" class="input-field" placeholder="Nuevo proveedor..." style="flex:1;">
+            <button onclick="provAgregar()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">+ Agregar</button>
+          </div>
+          <div id="prov-lista" style="margin-top:10px;"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">Movimientos del período</div>
+        <div style="overflow-x:auto;">
+          <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Cuenta</th><th>Descripción</th><th>Monto</th><th>Imp</th><th>Desc</th><th></th></tr></thead>
+            <tbody id="mov-tabla"><tr><td colspan="9" style="text-align:center;color:#aaa;padding:18px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -991,6 +1175,10 @@
     <div class="card-title">Editar producto</div>
     <input type="hidden" id="edit-id">
     <div class="mb-3"><label class="input-label">Nombre</label><input id="edit-nombre" class="input-field"></div>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div><label class="input-label">Categoría</label><input id="edit-categoria" class="input-field" placeholder="Ej: Útiles"></div>
+      <div><label class="input-label">Proveedor</label><input id="edit-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
+    </div>
     <div class="grid grid-cols-2 gap-3 mb-3">
       <div><label class="input-label">Stock</label><input id="edit-stock" type="number" class="input-field"></div>
       <div><label class="input-label">Precio venta S/</label><input id="edit-precio-venta" type="number" step="0.01" class="input-field"></div>
