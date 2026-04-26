@@ -17,6 +17,7 @@
     <pre id="log"></pre>
     <script type="module">
       import { buildScanVariants, validateBarcode } from "../scanner_utils.js";
+      import { parseOpenFoodFacts } from "../barcode_lookup.js";
 
       const out = document.getElementById("out");
       const log = document.getElementById("log");
@@ -58,6 +59,8 @@
         eq(findByScan(idx, "LIB-00001234")?.id, "2", "match LIB");
         has(buildScanVariants("0005901234123457"), "5901234123457", "variants incluye sin ceros");
         eq(validateBarcode("5901234123457").type, "EAN13", "tipo EAN13");
+        eq(parseOpenFoodFacts({ status: 1, product: { product_name: "Galletas", brands: "Marca", categories: "Snacks" } }).ok, true, "parse OFF ok");
+        eq(parseOpenFoodFacts({ status: 0 }).ok, false, "parse OFF fail");
 
         out.textContent = "✅ Todos los tests pasaron";
         out.className = "ok";

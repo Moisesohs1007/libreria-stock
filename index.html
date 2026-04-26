@@ -417,6 +417,10 @@
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="codigo-barras" class="input-field" placeholder="Escanea aquí..." style="flex:1;" onkeydown="if(event.key==='Enter'){stockBuscarCodigo();}">
               <button onclick="stockBuscarCodigo()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Buscar</button>
+              <button onclick="stockBuscarOnline()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Internet</button>
+            </div>
+            <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
+              Si no existe en tu BD, “Internet” intenta autocompletar (puedes configurar proveedor con <a href="#" onclick="stockConfigLookup();return false;" style="text-decoration:underline;">Config</a>).
             </div>
             <div id="stock-scan-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
           </div>

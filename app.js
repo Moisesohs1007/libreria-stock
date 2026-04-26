@@ -9,6 +9,7 @@
 
 import { db, storage } from './firebase-config.js?v=20260426b';
 import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260426b';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260426b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc
@@ -834,6 +835,7 @@ window.stockBuscarCodigo = function(arg) {
   }
   const code = vb.normalized;
   if (input) input.value = code;
+  if (rolActual === "admin") _outsideIgnoreAdd(code);
   const p = _stockFindProductByCode(code);
   const idEl = document.getElementById("nombre");
   const catEl = document.getElementById("prod-categoria");
@@ -854,6 +856,56 @@ window.stockBuscarCodigo = function(arg) {
     if (input) input.dataset.foundId = "";
     _stockSetMsg("No encontrado. Completa los datos y presiona Guardar para registrarlo.", "warning");
   }
+};
+
+window.stockConfigLookup = function() {
+  if (rolActual !== "admin") return;
+  const cur = getBarcodeLookupConfig();
+  const p = prompt("Proveedor (openfoodfacts o custom):", String(cur.provider || "openfoodfacts"));
+  if (!p) return;
+  const provider = String(p).trim().toLowerCase();
+  if (provider !== "openfoodfacts" && provider !== "custom") return mostrarMensaje("⚠️ Proveedor inválido", "warning");
+  let customUrlTemplate = String(cur.customUrlTemplate || "");
+  if (provider === "custom") {
+    const tpl = prompt("URL template (usa {code}):", customUrlTemplate || "https://example.com/api?barcode={code}");
+    if (!tpl) return;
+    customUrlTemplate = String(tpl || "").trim();
+    if (!customUrlTemplate.includes("{code}")) return mostrarMensaje("⚠️ La URL debe incluir {code}", "warning");
+  }
+  setBarcodeLookupConfig({ provider, customUrlTemplate });
+  mostrarMensaje("✅ Configuración guardada", "ok");
+};
+
+window.stockBuscarOnline = async function() {
+  if (rolActual !== "admin") return;
+  const input = document.getElementById("codigo-barras");
+  const raw = (input?.value || "").trim();
+  const cleaned = sanitizeScanCode(raw);
+  if (!cleaned) return _stockSetMsg("Escanea un código primero.", "warning");
+  const vb = validateBarcode(cleaned, { allowLib: false });
+  if (!vb.ok) return _stockSetMsg("Para Internet usa EAN-13 / UPC-A / EAN-8 (solo dígitos).", "warning");
+  const digits = String(vb.normalized || "");
+  const existing = _stockFindProductByCode(digits);
+  if (existing) return _stockSetMsg("Ya existe en tu sistema. Usa “Buscar” para cargarlo.", "ok");
+  const cfg = getBarcodeLookupConfig();
+  _stockSetMsg("Buscando en Internet…", "warning");
+  const r = await lookupBarcodeOnline(digits, cfg);
+  if (!r.ok) {
+    _stockSetMsg("No se encontró información online para este código.", "warning");
+    return;
+  }
+  const nm = String(r.name || "").trim();
+  const brand = String(r.brand || "").trim();
+  const cat = String(r.category || "").trim();
+  const nameEl = document.getElementById("nombre");
+  const provEl = document.getElementById("prod-proveedor");
+  const catEl = document.getElementById("prod-categoria");
+  if (input) input.value = digits;
+  if (nameEl && (!String(nameEl.value || "").trim())) nameEl.value = nm;
+  if (provEl && (!String(provEl.value || "").trim()) && brand) provEl.value = brand;
+  if (catEl && (!String(catEl.value || "").trim()) && cat) catEl.value = cat.split(",")[0].trim();
+  _outsideIgnoreAdd(digits);
+  _stockSetMsg(`Encontrado online: ${nm || "—"}. Revisa/ajusta y guarda.`, "ok");
 };
 
 window.agregarProducto = async function() {
@@ -1288,6 +1340,71 @@ function _touchRecentWebCode(code) {
     if ((now - t) > _outsideWebDedupe.winMs || _recentWebCodes.size > _outsideWebDedupe.max) _recentWebCodes.delete(k);
     if (_recentWebCodes.size <= _outsideWebDedupe.max) break;
   }
+}
+
+const _outsideIgnoreCfg = { key: "outside_queue_ignore_v1", ttlMs: 24 * 60 * 60 * 1000, max: 800 };
+function _outsideIgnoreLoad() {
+  try {
+    const raw = localStorage.getItem(_outsideIgnoreCfg.key);
+    const obj = raw ? JSON.parse(raw) : null;
+    const m = new Map();
+    if (obj && typeof obj === "object") {
+      for (const [k, v] of Object.entries(obj)) {
+        const at = Number(v);
+        if (!k) continue;
+        if (!Number.isFinite(at)) continue;
+        m.set(k, at);
+      }
+    }
+    return m;
+  } catch {
+    return new Map();
+  }
+}
+
+function _outsideIgnoreSave(map) {
+  try {
+    const obj = {};
+    for (const [k, at] of map.entries()) obj[k] = at;
+    localStorage.setItem(_outsideIgnoreCfg.key, JSON.stringify(obj));
+  } catch {}
+}
+
+function _outsideIgnorePrune(map) {
+  const now = Date.now();
+  for (const [k, at] of map.entries()) {
+    if (!Number.isFinite(at) || (now - at) > _outsideIgnoreCfg.ttlMs) map.delete(k);
+  }
+  if (map.size <= _outsideIgnoreCfg.max) return map;
+  const entries = Array.from(map.entries()).sort((a, b) => a[1] - b[1]);
+  while (entries.length > _outsideIgnoreCfg.max) entries.shift();
+  return new Map(entries);
+}
+
+function _outsideIgnoreAdd(code) {
+  const c = sanitizeScanCode(code);
+  if (!c) return;
+  const map = _outsideIgnorePrune(_outsideIgnoreLoad());
+  const now = Date.now();
+  const vs = buildScanVariants(c);
+  for (const v of vs) map.set(v, now);
+  _outsideIgnoreSave(_outsideIgnorePrune(map));
+}
+
+function _outsideIgnoreHas(code) {
+  const c = sanitizeScanCode(code);
+  if (!c) return false;
+  const map = _outsideIgnorePrune(_outsideIgnoreLoad());
+  const vs = buildScanVariants(c);
+  for (const v of vs) {
+    const at = map.get(v);
+    if (at && (Date.now() - at) <= _outsideIgnoreCfg.ttlMs) {
+      _outsideIgnoreSave(map);
+      return true;
+    }
+  }
+  _outsideIgnoreSave(map);
+  return false;
 }
 
 function setScannerDot(ok, mode) {
@@ -2231,6 +2348,7 @@ async function _outsideDrainNow() {
     const codes = arr.map(x => (typeof x === "string" ? x : x?.codigo)).filter(Boolean);
     if (!codes.length) return;
     for (const c of codes) {
+      if (_outsideIgnoreHas(c)) continue;
       try { await procesarCodigo(c, { source: "outside_queue" }); } catch {}
     }
   } catch {
