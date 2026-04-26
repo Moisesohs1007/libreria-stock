@@ -46,3 +46,49 @@ export function isLikelyScanByTiming(deltasMs) {
   return avg <= 80;
 }
 
+export function normalizeBarcodeDigits(raw) {
+  return String(raw || "").trim().replace(/\D+/g, "");
+}
+
+function _checksumMod10(digits, expectedLen) {
+  const s = String(digits || "");
+  if (!/^\d+$/.test(s)) return null;
+  if (expectedLen && s.length !== expectedLen) return null;
+  if (s.length < 2) return null;
+  const check = Number(s[s.length - 1]);
+  if (!Number.isFinite(check)) return null;
+  let sum = 0;
+  let w = 3;
+  for (let i = s.length - 2; i >= 0; i -= 1) {
+    const d = Number(s[i]);
+    sum += d * w;
+    w = (w === 3 ? 1 : 3);
+  }
+  const calc = (10 - (sum % 10)) % 10;
+  return calc === check ? calc : null;
+}
+
+export function validateBarcode(raw, opts) {
+  const allowLib = (opts?.allowLib ?? true) !== false;
+  const cleaned = sanitizeScanCode(raw);
+  const u = String(cleaned || "").toUpperCase();
+  if (allowLib && u.startsWith("LIB-") && u.length >= 8) {
+    return { ok: true, type: "LIB", normalized: u };
+  }
+  const digits = normalizeBarcodeDigits(cleaned);
+  if (!digits) return { ok: false, type: "", normalized: "", reason: "EMPTY" };
+  if (digits.length === 13) {
+    const ok = _checksumMod10(digits, 13) !== null;
+    return ok ? { ok: true, type: "EAN13", normalized: digits } : { ok: false, type: "EAN13", normalized: digits, reason: "CHECKSUM" };
+  }
+  if (digits.length === 12) {
+    const ok = _checksumMod10(digits, 12) !== null;
+    return ok ? { ok: true, type: "UPCA", normalized: digits } : { ok: false, type: "UPCA", normalized: digits, reason: "CHECKSUM" };
+  }
+  if (digits.length === 8) {
+    const ok = _checksumMod10(digits, 8) !== null;
+    return ok ? { ok: true, type: "EAN8", normalized: digits } : { ok: false, type: "EAN8", normalized: digits, reason: "CHECKSUM" };
+  }
+  return { ok: false, type: "UNKNOWN", normalized: digits, reason: "LENGTH" };
+}
+

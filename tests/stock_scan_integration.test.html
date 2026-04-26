@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stock Scan Integration Tests</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 20px; }
+      .ok { color: #16a34a; }
+      .bad { color: #dc2626; }
+      pre { background: #0b1020; color: #e5e7eb; padding: 12px; border-radius: 8px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Stock scan — tests</h1>
+    <div id="out">Ejecutando…</div>
+    <pre id="log"></pre>
+    <script type="module">
+      import { buildScanVariants, validateBarcode } from "../scanner_utils.js";
+
+      const out = document.getElementById("out");
+      const log = document.getElementById("log");
+      const lines = [];
+      const bad = (msg) => { throw new Error(msg); };
+      const eq = (a, b, msg) => {
+        if (a !== b) bad(`${msg} | esperado=${JSON.stringify(b)} real=${JSON.stringify(a)}`);
+      };
+      const has = (arr, v, msg) => {
+        if (!arr.includes(v)) bad(`${msg} | falta=${JSON.stringify(v)} en=${JSON.stringify(arr)}`);
+      };
+
+      function indexFromProducts(prods) {
+        const m = new Map();
+        for (const p of (prods || [])) {
+          const vs = buildScanVariants(p.codigo);
+          for (const v of vs) if (!m.has(v)) m.set(v, p);
+        }
+        return m;
+      }
+
+      function findByScan(index, scanned) {
+        const vs = buildScanVariants(scanned);
+        for (const v of vs) {
+          const hit = index.get(v);
+          if (hit) return hit;
+        }
+        return null;
+      }
+
+      try {
+        const prods = [
+          { id: "1", codigo: "0005901234123457", nombre: "Test EAN" },
+          { id: "2", codigo: "LIB-00001234", nombre: "Test LIB" },
+        ];
+        const idx = indexFromProducts(prods);
+        eq(!!findByScan(idx, "5901234123457"), true, "encuentra EAN ignorando ceros");
+        eq(findByScan(idx, "5901234123457")?.id, "1", "match id EAN");
+        eq(findByScan(idx, "LIB-00001234")?.id, "2", "match LIB");
+        has(buildScanVariants("0005901234123457"), "5901234123457", "variants incluye sin ceros");
+        eq(validateBarcode("5901234123457").type, "EAN13", "tipo EAN13");
+
+        out.textContent = "✅ Todos los tests pasaron";
+        out.className = "ok";
+        lines.push("OK  integración variants + lookup");
+      } catch (e) {
+        out.textContent = "❌ Falló";
+        out.className = "bad";
+        lines.push("ERR " + (e?.message || String(e)));
+      }
+      log.textContent = lines.join("\n");
+    </script>
+  </body>
+</html>
+

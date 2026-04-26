@@ -8,7 +8,7 @@
  */
 
 import { db, storage } from './firebase-config.js?v=20260426b';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from './scanner_utils.js?v=20260426b';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260426b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc
@@ -402,7 +402,11 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
   const seccion = document.getElementById("seccion-activa");
   if (seccion) seccion.textContent = titulo;
   cerrarSidebar();
-  if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  if (tabId === "tab-agregar") {
+    const el = document.getElementById("codigo-barras");
+    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
+    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
 };
 
@@ -436,7 +440,11 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   
   const seccion = document.getElementById("seccion-activa");
   if (seccion) seccion.textContent = titulo;
-  if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  if (tabId === "tab-agregar") {
+    const el = document.getElementById("codigo-barras");
+    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
+    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (tabId === "tab-etiquetas" && (!todosLosProductos || !todosLosProductos.length) && typeof window._cargarProductosOnce === "function") {
     window._cargarProductosOnce();
@@ -446,7 +454,12 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
 window.cerrarModal = function(id) {
   const modal = document.getElementById(id);
   if (modal) modal.classList.remove("active");
-  if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  const isAdminAgregar = (rolActual === "admin" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+  if (isAdminAgregar) {
+    const el = document.getElementById("codigo-barras");
+    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
+    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
 };
 
 // =============================================
@@ -783,24 +796,134 @@ window.imprimirEtiquetas = function() {
   window.print();
 };
 
+function _stockSetMsg(texto, tipo) {
+  const box = document.getElementById("stock-scan-msg");
+  if (!box) return;
+  if (!texto) { box.style.display = "none"; box.textContent = ""; return; }
+  box.style.display = "block";
+  box.textContent = texto;
+  box.style.borderColor = tipo === "error" ? "#ef4444" : (tipo === "ok" ? "#16a34a" : "var(--border)");
+  box.style.color = tipo === "error" ? "#991b1b" : (tipo === "ok" ? "#065f46" : "#444");
+  box.style.background = tipo === "error" ? "#fee2e2" : (tipo === "ok" ? "#d1fae5" : "var(--paper)");
+}
+
+function _stockFindProductByCode(code) {
+  const variantes = buildScanVariants(code);
+  for (const v of variantes) {
+    const hit = _productoIndex.get(v);
+    if (hit && hit.id) return hit;
+  }
+  const list = Array.isArray(todosLosProductos) ? todosLosProductos : [];
+  for (const v of variantes) {
+    const hit = list.find(p => String(p?.codigo || "") === String(v));
+    if (hit && hit.id) return hit;
+  }
+  return null;
+}
+
+window.stockBuscarCodigo = function(arg) {
+  const input = document.getElementById("codigo-barras");
+  const raw = (typeof arg === "string" ? arg : (input?.value || "")).trim();
+  const cleaned = sanitizeScanCode(raw);
+  if (!cleaned) { _stockSetMsg("", ""); return; }
+  const vb = validateBarcode(cleaned, { allowLib: true });
+  if (!vb.ok) {
+    _stockSetMsg("Código inválido. Usa EAN-13, UPC-A, EAN-8 (checksum válido) o LIB-.", "error");
+    if (input) input.dataset.foundId = "";
+    return;
+  }
+  const code = vb.normalized;
+  if (input) input.value = code;
+  const p = _stockFindProductByCode(code);
+  const idEl = document.getElementById("nombre");
+  const catEl = document.getElementById("prod-categoria");
+  const provEl = document.getElementById("prod-proveedor");
+  const stockEl = document.getElementById("stock");
+  const pvEl = document.getElementById("precio-venta");
+  const pcEl = document.getElementById("precio-compra");
+  if (p) {
+    if (input) input.dataset.foundId = p.id;
+    if (idEl) idEl.value = String(p.nombre || "");
+    if (catEl) catEl.value = String(p.categoria || "");
+    if (provEl) provEl.value = String(p.proveedor || "");
+    if (pvEl) pvEl.value = String(_precioVenta(p));
+    if (pcEl) pcEl.value = String(_precioCompra(p));
+    if (stockEl) stockEl.value = "1";
+    _stockSetMsg(`Producto encontrado: "${String(p.nombre || "Producto")}". Ingresa cantidad en Stock para sumar.`, "ok");
+  } else {
+    if (input) input.dataset.foundId = "";
+    _stockSetMsg("No encontrado. Completa los datos y presiona Guardar para registrarlo.", "warning");
+  }
+};
+
 window.agregarProducto = async function() {
+  const codigoEl = document.getElementById("codigo-barras");
+  const codigoRaw = (codigoEl?.value || "").trim();
   const nombre=document.getElementById("nombre").value.trim();
   const categoria = document.getElementById("prod-categoria")?.value?.trim() || "";
   const proveedor = document.getElementById("prod-proveedor")?.value?.trim() || "";
   const stock=parseInt(document.getElementById("stock").value);
   const precioVenta=parseFloat(document.getElementById("precio-venta").value);
   const precioCompra=parseFloat(document.getElementById("precio-compra").value);
+
+  let codigo = sanitizeScanCode(codigoRaw);
+  if (codigo) {
+    const vb = validateBarcode(codigo, { allowLib: true });
+    if (!vb.ok) { mostrarMensaje("⚠️ Código de barras inválido (EAN/UPC) o LIB-", "error"); _stockSetMsg("Código inválido. Verifica el escaneo.", "error"); return; }
+    codigo = vb.normalized;
+    if (codigoEl) codigoEl.value = codigo;
+  } else {
+    codigo = "LIB-" + Date.now().toString().slice(-8);
+    if (codigoEl) codigoEl.value = codigo;
+  }
+
+  const existing = _stockFindProductByCode(codigo);
+  if (existing) {
+    if (isNaN(stock) || stock <= 0) { mostrarMensaje("⚠️ Ingresa cantidad (Stock) para sumar", "warning"); return; }
+    if (!isNaN(precioVenta) && precioVenta < 0) { mostrarMensaje("⚠️ Precio venta inválido", "error"); return; }
+    if (!isNaN(precioCompra) && precioCompra < 0) { mostrarMensaje("⚠️ Precio compra inválido", "error"); return; }
+    try {
+      const prodRef = doc(db, "productos", existing.id);
+      let before = null;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(prodRef);
+        if (!snap.exists()) throw new Error("NOT_FOUND");
+        before = { id: existing.id, ...snap.data() };
+        const cur = snap.data() || {};
+        const curStock = _toNum(cur.stock);
+        const afterStock = Number.isFinite(curStock) ? (curStock + stock) : (stock);
+        const updates = { stock: afterStock };
+        if (nombre) updates.nombre = nombre;
+        if (categoria) updates.categoria = categoria;
+        if (proveedor) updates.proveedor = proveedor;
+        if (Number.isFinite(precioVenta)) { updates.precio_venta = precioVenta; updates.precio = precioVenta; }
+        if (Number.isFinite(precioCompra)) updates.precio_compra = precioCompra;
+        tx.update(prodRef, updates);
+      });
+      await _auditLog("update", "productos", existing.id, before, { ...(before || {}), stock: (_toNum(before?.stock) + stock), nombre: (nombre || before?.nombre), categoria: (categoria || before?.categoria), proveedor: (proveedor || before?.proveedor), precio_venta: (Number.isFinite(precioVenta) ? precioVenta : before?.precio_venta), precio_compra: (Number.isFinite(precioCompra) ? precioCompra : before?.precio_compra) });
+      mostrarMensaje(`✅ Stock actualizado: +${stock}`, "ok");
+      _stockSetMsg(`Actualizado: +${stock} al stock de "${String(existing.nombre || "Producto")}".`, "ok");
+      ["stock"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
+      return;
+    } catch (e) {
+      mostrarMensaje("❌ Error actualizando stock", "error");
+      _stockSetMsg("Error actualizando. Reintenta.", "error");
+      return;
+    }
+  }
+
   if(!nombre){mostrarMensaje("⚠️ Falta el nombre","error");return;}
   if(isNaN(stock)||stock<0){mostrarMensaje("⚠️ Stock inválido","error");return;}
   if(isNaN(precioVenta)||precioVenta<0){mostrarMensaje("⚠️ Precio venta inválido","error");return;}
   if(!isNaN(precioCompra) && precioCompra<0){mostrarMensaje("⚠️ Precio compra inválido","error");return;}
-  const codigo="LIB-"+Date.now().toString().slice(-8);
   try{
     const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
     const precio_venta = precioVenta;
     await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio_venta,precio_compra,precio:precio_venta,categoria,proveedor,creadoEn:new Date()});
     mostrarMensaje(`✅ "${nombre}" agregado`,"ok");
-    ["nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
+    _stockSetMsg(`Registrado: "${nombre}" (${codigo})`, "ok");
+    ["codigo-barras","nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
+    if (codigoEl) codigoEl.dataset.foundId = "";
   }catch(e){mostrarMensaje("❌ Error: "+e.message,"error");}
 };
 
@@ -1330,7 +1453,8 @@ async function procesarCodigo(codigo, meta) {
 }
 
 function finalizarEscaneo() {
-  if (rolActual !== "vendedor") {
+  const isAdminStock = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+  if (rolActual !== "vendedor" && !isAdminStock) {
     bufferEscaner = "";
     if (scannerInput) scannerInput.value = "";
     if (timerEscaner) clearTimeout(timerEscaner);
@@ -1369,18 +1493,23 @@ function finalizarEscaneo() {
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = null;
   _resetScanTiming();
+  if (isAdminStock) {
+    window.stockBuscarCodigo(cleaned);
+    return;
+  }
   procesarCodigo(cleaned, { source: "web" });
 }
 
 function alimentarEscaneo(ch, source) {
-  if (rolActual !== "vendedor") return;
+  const isAdminStock = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+  if (rolActual !== "vendedor" && !isAdminStock) return;
   bufferEscaner += ch;
   const now = Date.now();
   if (!_scanTiming.source) _scanTiming.source = source || "doc";
   if (_scanTiming.lastTs) _scanTiming.deltas.push(now - _scanTiming.lastTs);
   _scanTiming.lastTs = now;
   lastScanAt = now;
-  setScannerDot(true, "local");
+  if (rolActual === "vendedor") setScannerDot(true, "local");
   if (timerEscaner) clearTimeout(timerEscaner);
   timerEscaner = setTimeout(() => finalizarEscaneo(), SCAN_IDLE_MS);
 }
@@ -1401,7 +1530,8 @@ function isSalesContext() {
 
 if (scannerInput) {
   scannerInput.addEventListener("keydown", e => {
-    if (rolActual !== "vendedor") return;
+    const isAdminStock = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+    if (rolActual !== "vendedor" && !isAdminStock) return;
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       finalizarEscaneo();
@@ -1437,7 +1567,8 @@ if (scannerInput) {
 }
 
 document.addEventListener("keydown", e => {
-  if (rolActual !== "vendedor") return;
+  const isAdminStock = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+  if (rolActual !== "vendedor" && !isAdminStock) return;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
   const ae = document.activeElement;
@@ -1475,7 +1606,8 @@ document.addEventListener("keydown", e => {
 });
 
 document.addEventListener("input", e => {
-  if (rolActual !== "vendedor") return;
+  const isAdminStock = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-agregar")?.classList?.contains("active") === true);
+  if (rolActual !== "vendedor" && !isAdminStock) return;
   const inLogin = document.getElementById("login-screen")?.style?.display !== "none";
   if (inLogin) return;
   if (localStorage.getItem("scan_clean_inputs") !== "1") return;

@@ -16,7 +16,7 @@
     <div id="out">Ejecutando…</div>
     <pre id="log"></pre>
     <script type="module">
-      import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming } from "../scanner_utils.js";
+      import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from "../scanner_utils.js";
 
       const out = document.getElementById("out");
       const log = document.getElementById("log");
@@ -43,6 +43,13 @@
         eq(isLikelyScanByTiming([15, 18, 12, 20]), true, "timing rápido");
         eq(isLikelyScanByTiming([140, 120, 95]), false, "timing humano");
         eq(isLikelyScanByTiming([]), true, "timing vacío");
+
+        eq(validateBarcode("5901234123457").ok, true, "EAN-13 válido");
+        eq(validateBarcode("5901234123458").ok, false, "EAN-13 checksum inválido");
+        eq(validateBarcode("036000291452").ok, true, "UPC-A válido");
+        eq(validateBarcode("96385074").ok, true, "EAN-8 válido");
+        eq(validateBarcode("96385075").ok, false, "EAN-8 checksum inválido");
+        eq(validateBarcode("LIB-00123").ok, true, "LIB válido");
 
         out.textContent = "✅ Todos los tests pasaron";
         out.className = "ok";
