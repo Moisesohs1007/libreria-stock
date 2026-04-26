@@ -102,27 +102,28 @@ function mostrarMensaje(texto, tipo="ok") {
 window.mostrarMensaje = mostrarMensaje;
 
 function _updateLowStockBanner() {
-  const el = document.getElementById("low-stock-banner");
-  if (!el) return;
-  if (rolActual !== "vendedor" && rolActual !== "admin") {
-    el.style.display = "none";
+  const card = document.getElementById("v-low-stock-card");
+  const list = document.getElementById("v-alertas-stock");
+  if (!card || !list) return;
+  if (rolActual !== "vendedor") {
+    card.style.display = "none";
     return;
   }
-  const bajos = (todosLosProductos || []).filter(p => {
-    const s = Number(p.stock);
-    return Number.isFinite(s) && s <= 5;
-  }).sort((a, b) => Number(a.stock) - Number(b.stock));
+  const bajos = (todosLosProductos || []).filter(p => _toNum(p.stock) <= 5).sort((a, b) => _toNum(a.stock) - _toNum(b.stock));
   if (!bajos.length) {
-    el.style.display = "none";
+    card.style.display = "none";
     return;
   }
-  const items = bajos.slice(0, 5);
-  const extra = bajos.length - items.length;
-  el.innerHTML = `<div class="ls-title">Stock bajo (≤ 5)</div>` + items.map(p => {
+  list.innerHTML = bajos.map(p => {
     const nm = String(p.nombre || "").trim() || "Producto";
-    return `<div class="ls-item"><span>${nm}</span><span class="ls-num">${p.stock}</span></div>`;
-  }).join("") + (extra > 0 ? `<div class="ls-item"><span>y ${extra} más</span><span class="ls-num">…</span></div>` : "");
-  el.style.display = "block";
+    const s = _toNum(p.stock);
+    const cls = s <= 0 ? "badge-empty" : "badge-low";
+    return `<div style="display:flex;justify-content:space-between;padding:7px 11px;border-bottom:1px dashed #fca5a5;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">
+      <span style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:78%;">${nm}</span>
+      <span class="badge-stock ${cls}">${s}</span>
+    </div>`;
+  }).join("");
+  card.style.display = "block";
 }
 
 try { localStorage.setItem("scan_autofocus", "0"); } catch {}

@@ -177,26 +177,10 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
 #mensaje.error{border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.08);color:#7f1d1d;}
 #mensaje.warning{border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.10);color:#7c2d12;}
 
-#low-stock-banner{
-  position:fixed;
-  left:16px;
-  top:16px;
-  z-index:9997;
-  width:min(420px, calc(100vw - 32px));
-  border:1px solid rgba(245,158,11,.28);
-  border-radius:var(--radius-md);
-  background:rgba(245,158,11,.10);
-  color:#7c2d12;
-  box-shadow:var(--shadow-md);
-  padding:12px 14px;
-  font-weight:800;
-  display:none;
-  pointer-events:none;
+#v-alertas-stock{
+  max-height:220px;
+  overflow:auto;
 }
-#low-stock-banner .ls-title{font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.4px;text-transform:uppercase;opacity:.85;margin:0 0 6px;}
-#low-stock-banner .ls-item{display:flex;justify-content:space-between;gap:10px;font-weight:800;font-size:.88rem;line-height:1.25;}
-#low-stock-banner .ls-item + .ls-item{margin-top:4px;}
-#low-stock-banner .ls-num{font-family:'IBM Plex Mono',monospace;font-weight:900;}
 
 /* INPUTS */
 .input-field{

@@ -10,12 +10,11 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260426a">
+  <link rel="stylesheet" href="style.css?v=20260426b">
 </head>
 <body>
 <input id="scanner" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0;" autocomplete="off"/>
 <div id="mensaje"></div>
-<div id="low-stock-banner" aria-live="polite"></div>
 
 <!-- =============================================
      PANTALLA DE LOGIN
@@ -72,6 +71,10 @@
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div class="stat-box"><div class="stat-num" id="v-ventas-hoy" style="color:#f4a261;">0</div><div class="stat-label">Ventas hoy</div></div>
       <div class="stat-box"><div class="stat-num" id="v-total-hoy" style="color:#60a5fa;font-size:1.3rem;">S/0</div><div class="stat-label">Caja hoy</div></div>
+    </div>
+    <div class="card" id="v-low-stock-card" style="margin-bottom:14px;display:none;">
+      <div class="card-title">Stock bajo (≤5 unidades)</div>
+      <div id="v-alertas-stock"><div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Todo bien ✅</div></div>
     </div>
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">Mi Conteo de Impresiones</div>
@@ -1007,4 +1010,4 @@
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260426a'></script></body></html>
+<script type='module' src='app.js?v=20260426b'></script></body></html>
