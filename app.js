@@ -52,6 +52,14 @@ function _toNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function _precioVenta(p) {
+  return _toNum(p?.precio_venta ?? p?.precioVenta ?? p?.precio ?? 0);
+}
+
+function _precioCompra(p) {
+  return _toNum(p?.precio_compra ?? p?.precioCompra ?? 0);
+}
+
 // =============================================
 // GESTIÓN DE SESIÓN
 // =============================================
@@ -541,19 +549,22 @@ function renderizarTabla(prods) {
   const inv = document.getElementById("inventario");
   if (!inv) return;
   if (!prods.length) { 
-    inv.innerHTML=`<tr><td colspan="5" style="text-align:center;color:#aaa;padding:24px;font-family:'IBM Plex Mono',monospace;">Sin resultados</td></tr>`; 
+    inv.innerHTML=`<tr><td colspan="6" style="text-align:center;color:#aaa;padding:24px;font-family:'IBM Plex Mono',monospace;">Sin resultados</td></tr>`; 
     return; 
   }
   inv.innerHTML = prods.map(p => {
     const bc = p.stock<=0?"badge-empty":p.stock<=5?"badge-low":"badge-ok";
     const n  = p.nombre.replace(/'/g,"\\'");
+    const pv = _precioVenta(p);
+    const pc = _precioCompra(p);
     return `<tr>
       <td style="font-weight:600;">${p.nombre}</td>
       <td class="mono" style="font-size:0.76rem;color:#555;">${p.codigo}</td>
       <td><span class="badge-stock ${bc}">${p.stock}</span></td>
-      <td class="mono" style="font-weight:700;color:var(--green);">S/ ${parseFloat(p.precio).toFixed(2)}</td>
+      <td class="mono" style="font-weight:900;color:var(--green);">S/ ${pv.toFixed(2)}</td>
+      <td class="mono" style="font-weight:900;color:#475569;">S/ ${pc.toFixed(2)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap;">
-        <button onclick="abrirEdicion('${p.id}','${n}',${p.stock},${p.precio})" class="btn btn-edit">✏️</button>
+        <button onclick="abrirEdicion('${p.id}','${n}',${p.stock},${pv},${pc})" class="btn btn-edit">✏️</button>
         <button onclick="eliminarProducto('${p.id}','${n}')" class="btn btn-danger">🗑</button>
       </td>
     </tr>`;
@@ -681,13 +692,13 @@ window.generarEtiquetas = async function() {
     for (const p of groupItems) {
       const codigo = String(p.codigo || "").trim();
       const nombre = String(p.nombre || "").trim();
-      const precio = parseFloat(p.precio);
+      const precio = _precioVenta(p);
       const imgHtml = await buildCodeImageHtml(codigo, tipo, codePx);
       const html = `
         <div style="font-size:12px;font-weight:900;line-height:1.2;margin-bottom:2px;overflow:hidden;max-height:2.6em;">${nombre}</div>
         ${imgHtml || `<div class="mono" style="font-size:11px;color:#64748b;margin:4px 0;">${codigo}</div>`}
         <div style="font-size:10px;color:#475569;" class="mono">${codigo}</div>
-        <div style="font-size:12px;font-weight:900;">S/ ${Number.isFinite(precio) ? precio.toFixed(2) : "0.00"}</div>
+        <div style="font-size:12px;font-weight:900;">S/ ${precio.toFixed(2)}</div>
       `;
 
       const box = document.createElement("div");
@@ -715,23 +726,28 @@ window.imprimirEtiquetas = function() {
 window.agregarProducto = async function() {
   const nombre=document.getElementById("nombre").value.trim();
   const stock=parseInt(document.getElementById("stock").value);
-  const precio=parseFloat(document.getElementById("precio").value);
+  const precioVenta=parseFloat(document.getElementById("precio-venta").value);
+  const precioCompra=parseFloat(document.getElementById("precio-compra").value);
   if(!nombre){mostrarMensaje("⚠️ Falta el nombre","error");return;}
   if(isNaN(stock)||stock<0){mostrarMensaje("⚠️ Stock inválido","error");return;}
-  if(isNaN(precio)||precio<0){mostrarMensaje("⚠️ Precio inválido","error");return;}
+  if(isNaN(precioVenta)||precioVenta<0){mostrarMensaje("⚠️ Precio venta inválido","error");return;}
+  if(!isNaN(precioCompra) && precioCompra<0){mostrarMensaje("⚠️ Precio compra inválido","error");return;}
   const codigo="LIB-"+Date.now().toString().slice(-8);
   try{
-    await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio,creadoEn:new Date()});
+    const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
+    const precio_venta = precioVenta;
+    await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio_venta,precio_compra,precio:precio_venta,creadoEn:new Date()});
     mostrarMensaje(`✅ "${nombre}" agregado`,"ok");
-    ["nombre","stock","precio"].forEach(id=>document.getElementById(id).value="");
+    ["nombre","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
   }catch(e){mostrarMensaje("❌ Error: "+e.message,"error");}
 };
 
-window.abrirEdicion = function(id,nombre,stock,precio){
+window.abrirEdicion = function(id,nombre,stock,precioVenta,precioCompra){
   document.getElementById("edit-id").value    =id;
   document.getElementById("edit-nombre").value=nombre;
   document.getElementById("edit-stock").value =stock;
-  document.getElementById("edit-precio").value=precio;
+  document.getElementById("edit-precio-venta").value=precioVenta;
+  document.getElementById("edit-precio-compra").value=precioCompra;
   const modal = document.getElementById("modal-editar");
   if (modal) modal.classList.add("active");
 };
@@ -740,13 +756,17 @@ window.guardarEdicion = async function(){
   const id    = document.getElementById("edit-id").value;
   const nombre= document.getElementById("edit-nombre").value.trim();
   const stock = parseInt(document.getElementById("edit-stock").value);
-  const precio= parseFloat(document.getElementById("edit-precio").value);
-  if(!nombre || isNaN(stock) || isNaN(precio)){
+  const precioVenta= parseFloat(document.getElementById("edit-precio-venta").value);
+  const precioCompra= parseFloat(document.getElementById("edit-precio-compra").value);
+  if(!nombre || isNaN(stock) || isNaN(precioVenta)){
     mostrarMensaje("⚠️ Completa todos los campos correctamente", "error");
     return;
   }
+  if(!isNaN(precioCompra) && precioCompra < 0) return mostrarMensaje("⚠️ Precio compra inválido", "error");
   try {
-    await updateDoc(doc(db, "productos", id), { nombre, stock, precio });
+    const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
+    const precio_venta = precioVenta;
+    await updateDoc(doc(db, "productos", id), { nombre, stock, precio_venta, precio_compra, precio: precio_venta });
     mostrarMensaje("✅ Producto actualizado", "ok");
     cerrarModal("modal-editar");
   } catch (e) {
@@ -795,12 +815,25 @@ window.confirmarImportacion = async function() {
   mostrarMensaje("⏳ Importando...","warning");
   let ok=0;
   for (const row of rows) {
-    const nombre = (row.Nombre||row.nombre||"").toString().trim();
-    const stock  = parseInt(row.Stock||row.stock||0);
-    const precio = parseFloat(row.Precio||row.precio||0);
+    const lower = {};
+    try {
+      for (const [k, v] of Object.entries(row || {})) lower[String(k || "").trim().toLowerCase()] = v;
+    } catch {}
+    const nombre = String(lower["nombre"] ?? "").trim();
+    const stock  = parseInt(lower["stock"] ?? 0);
+    const precioVenta = parseFloat(
+      lower["precio venta"] ?? lower["precio_venta"] ?? lower["precio-venta"] ??
+      lower["venta"] ?? lower["precio"] ?? lower["precio s/"] ?? 0
+    );
+    const precioCompra = parseFloat(
+      lower["precio compra"] ?? lower["precio_compra"] ?? lower["precio-compra"] ??
+      lower["compra"] ?? 0
+    );
     if (!nombre) continue;
     try {
-      await addDoc(collection(db,"productos"),{codigo:"LIB-"+Date.now().toString().slice(-8),nombre,stock,precio,creadoEn:new Date()});
+      const precio_compra = Number.isFinite(precioCompra) ? precioCompra : 0;
+      const precio_venta = Number.isFinite(precioVenta) ? precioVenta : 0;
+      await addDoc(collection(db,"productos"),{codigo:"LIB-"+Date.now().toString().slice(-8),nombre,stock,precio_venta,precio_compra,precio:precio_venta,creadoEn:new Date()});
       ok++;
     } catch(e) {}
   }
@@ -815,14 +848,14 @@ window.cancelarImportacion = function() {
 };
 
 window.descargarPlantilla = function() {
-  const ws = XLSX.utils.json_to_sheet([{Nombre:"Producto Ejemplo", Stock:10, Precio:5.00}]);
+  const ws = XLSX.utils.json_to_sheet([{Nombre:"Producto Ejemplo", Stock:10, "Precio Venta":5.00, "Precio Compra":3.20}]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
   XLSX.writeFile(wb, "plantilla_productos.xlsx");
 };
 
 window.exportarExcel = function(){
-  const datos=todosLosProductos.map(p=>({Nombre:p.nombre,Código:p.codigo,Stock:p.stock,Precio:p.precio}));
+  const datos=todosLosProductos.map(p=>({Nombre:p.nombre,Código:p.codigo,Stock:p.stock,"Precio Venta":_precioVenta(p),"Precio Compra":_precioCompra(p)}));
   const ws=XLSX.utils.json_to_sheet(datos);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Inventario");
@@ -1175,7 +1208,7 @@ async function procesarCodigo(codigo, meta) {
 
       const ventaRef = doc(collection(db, "ventas"));
       const cant = 1;
-      const unit = Number(data.precio ?? p.precio ?? 0) || 0;
+      const unit = _toNum(data.precio_venta ?? data.precio ?? p.precio_venta ?? p.precio ?? 0);
       const total = unit * cant;
       tx.set(ventaRef, {
         codigo: data.codigo ?? p.codigo ?? codigo,
