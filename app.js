@@ -1155,8 +1155,86 @@ function actualizarUIVentas() {
   if(vvh) vvh.textContent = ventasHoy.length;
   if(vth) vth.textContent = `S/${totalHoy.toFixed(2)}`;
 
+  _renderCajaAdmin(ahora, ventasHoy, totalHoy);
   _renderVentasDelDia(ventasHoy);
   renderizarHistorial(todasLasVentas);
+}
+
+function _renderCajaAdmin(ahora, ventasHoy, totalHoy) {
+  const elCajaHoy = document.getElementById("caja-hoy");
+  const elCajaHoyCount = document.getElementById("caja-hoy-count");
+  if (elCajaHoy) elCajaHoy.textContent = `S/ ${Number(totalHoy || 0).toFixed(2)}`;
+  if (elCajaHoyCount) elCajaHoyCount.textContent = `${ventasHoy.length} ventas hoy`;
+
+  const mesIni = new Date(ahora.getFullYear(), ahora.getMonth(), 1, 0, 0, 0, 0);
+  const ventasMes = (todasLasVentas || []).filter(v => {
+    const f = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
+    return f >= mesIni;
+  });
+  const totalMes = ventasMes.reduce((s, v) => s + (_toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario) * (_toNum(v.cantidad) || 1))), 0);
+  const elCajaMes = document.getElementById("caja-mes");
+  const elCajaMesCount = document.getElementById("caja-mes-count");
+  if (elCajaMes) elCajaMes.textContent = `S/ ${Number(totalMes || 0).toFixed(2)}`;
+  if (elCajaMesCount) elCajaMesCount.textContent = `${ventasMes.length} ventas este mes`;
+
+  const sem = document.getElementById("resumen-semana");
+  if (sem) {
+    const days = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date(ahora);
+      d.setDate(ahora.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const k = d.toISOString().slice(0, 10);
+      days.push({ d, k });
+    }
+    const byDay = new Map(days.map(x => [x.k, { k: x.k, d: x.d, cant: 0, total: 0 }]));
+    for (const v of (todasLasVentas || [])) {
+      const f = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
+      const d = new Date(f.getFullYear(), f.getMonth(), f.getDate(), 0, 0, 0, 0);
+      const k = d.toISOString().slice(0, 10);
+      const cur = byDay.get(k);
+      if (!cur) continue;
+      const cant = _toNum(v.cantidad) || 1;
+      const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario) * cant);
+      cur.cant += cant;
+      cur.total += Number(monto || 0);
+      byDay.set(k, cur);
+    }
+    const rows = days.map(x => byDay.get(x.k)).filter(Boolean).map(x => {
+      const lbl = x.d.toLocaleDateString("es-PE", { weekday: "short" });
+      return `<div class="hist-row" style="grid-template-columns:1fr .7fr;">
+        <span style="font-weight:800;">${lbl}</span>
+        <span style="text-align:right;color:var(--green);font-weight:900;">S/ ${Number(x.total || 0).toFixed(2)}</span>
+      </div>`;
+    }).join("");
+    sem.innerHTML = rows || `<div style="text-align:center;color:#aaa;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</div>`;
+  }
+
+  const top = document.getElementById("top-productos");
+  if (top) {
+    const map = new Map();
+    for (const v of ventasMes) {
+      const key = String(v.codigo || v.nombre || "").trim() || "SIN_CODIGO";
+      const prev = map.get(key) || { nombre: v.nombre || "", codigo: v.codigo || "", cant: 0, total: 0 };
+      const cant = _toNum(v.cantidad) || 1;
+      const monto = _toNum(v.total) || _toNum(v.precio) || (_toNum(v.precio_unitario) * cant);
+      prev.cant += cant;
+      prev.total += Number(monto || 0);
+      if (!prev.nombre) prev.nombre = v.nombre || "";
+      if (!prev.codigo) prev.codigo = v.codigo || "";
+      map.set(key, prev);
+    }
+    const items = [...map.values()].sort((a, b) => (b.total - a.total) || (b.cant - a.cant));
+    const rows = items.slice(0, 10).map(x => {
+      const label = x.codigo ? `${x.nombre} (${x.codigo})` : (x.nombre || "Producto");
+      return `<div class="hist-row" style="grid-template-columns:2fr .6fr .8fr;">
+        <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+        <span class="mono" style="font-weight:900;text-align:right;">${x.cant}</span>
+        <span style="text-align:right;color:var(--green);font-weight:900;">S/ ${Number(x.total || 0).toFixed(2)}</span>
+      </div>`;
+    }).join("");
+    top.innerHTML = rows || `<div style="text-align:center;color:#aaa;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin datos</div>`;
+  }
 }
 
 function _renderVentasDelDia(ventasHoy) {
