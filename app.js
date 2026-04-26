@@ -409,6 +409,10 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
+  if (rolActual === "admin") {
+    if (tabId === "tab-ganancias") setTimeout(() => { try { window.gananciasCalcular?.(); } catch {} }, 80);
+    if (tabId === "tab-movimientos") setTimeout(() => { try { window.movActualizar?.(); } catch {} }, 80);
+  }
 };
 
 window.toggleDtGroup = function(groupId) {
@@ -447,6 +451,10 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
+  if (rolActual === "admin") {
+    if (tabId === "tab-ganancias") setTimeout(() => { try { window.gananciasCalcular?.(); } catch {} }, 80);
+    if (tabId === "tab-movimientos") setTimeout(() => { try { window.movActualizar?.(); } catch {} }, 80);
+  }
   if (tabId === "tab-etiquetas" && (!todosLosProductos || !todosLosProductos.length) && typeof window._cargarProductosOnce === "function") {
     window._cargarProductosOnce();
   }
@@ -3579,6 +3587,7 @@ window.movActualizar = async function() {
     if (elNet) elNet.textContent = _fmtS(tot.neto);
     if (elImp) elImp.textContent = _fmtS(tot.imp);
     _renderMovTabla(rows);
+    if (!rows?.length) mostrarMensaje("ℹ️ No hay movimientos registrados en ese período", "warning");
     const ventas = _ventasInRange(r.from, r.to);
     const ventasNet = ventas.reduce((s, v) => s + _ventaLineNet(v).net, 0);
     const cogs = ventas.reduce((s, v) => s + _ventaLineNet(v).costo, 0);
@@ -3638,6 +3647,7 @@ window.gananciasCalcular = async function() {
     f.hasta = _endOfDay(_parseDateOnly(document.getElementById("gan-hasta").value));
   }
   const res = _gananciasCompute(f);
+  if (!res?.rows?.length) mostrarMensaje("ℹ️ Sin ventas en el rango seleccionado", "warning");
   const egresosOp = (await (async () => {
     try {
       const movs = await _movFetchRange(f.desde, f.hasta);
