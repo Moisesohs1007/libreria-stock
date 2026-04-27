@@ -7,10 +7,10 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db, storage } from './firebase-config.js?v=20260427d';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427d';
-import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427d';
-import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427d';
+import { db, storage } from './firebase-config.js?v=20260427e';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427e';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427e';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427e';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit
@@ -356,21 +356,24 @@ function activarAdmin() {
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display  = "block";
   iniciarListeners();
+  try {
+    const pm = document.getElementById("pack-mode");
+    const sec = document.getElementById("rec-section");
+    if (pm && sec) {
+      const sync = () => { sec.style.display = pm.checked ? "block" : "none"; };
+      pm.onchange = sync;
+      sync();
+    }
+  } catch {}
   try { localStorage.setItem("outside_queue_enabled", "0"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
   try {
-    const sid = localStorage.getItem(_scanSessKey) || "";
-    if (/^\d{6}$/.test(String(sid))) {
-      _scanSessId = String(sid);
-      _scanUiSet("restaurando…");
-      setTimeout(() => { try { _scanStartListener(_scanSessId); } catch {} }, 350);
-    } else {
-      _scanUiSet("inactivo");
-    }
-  } catch {
-    _scanUiSet("inactivo");
-  }
+    _scanSessId = "ADMIN";
+    try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
+    _scanUiSet("conectando…");
+    setTimeout(() => { try { _scanStartListener(_scanSessId); } catch {} }, 350);
+  } catch {}
 }
 
 function activarVendedor(nombre) {
@@ -927,13 +930,10 @@ window.recDetectar = async function() {
   if (p && p.pack && typeof p.pack === "object") {
     const upp = _toNum(p.pack.units_per_pack);
     const unitCode = String(p.pack.unit_code || "").trim();
-    const unitName = String(p.pack.unit_name || "").trim();
     const uppEl = document.getElementById("rec-upp");
     const ucEl = document.getElementById("rec-unitcode");
-    const nmEl = document.getElementById("rec-nombre");
     if (uppEl && upp) uppEl.value = String(upp);
     if (ucEl && unitCode && !String(ucEl.value || "").trim()) ucEl.value = unitCode;
-    if (nmEl && unitName && !String(nmEl.value || "").trim()) nmEl.value = unitName;
     _recSetMsg("Paquete reconocido. Completa y confirma desagregación.", "ok");
   } else {
     _recSetMsg("Paquete no registrado aún. Completa los datos y confirma desagregación.", "warning");
@@ -950,11 +950,11 @@ window.recConfirmar = async function() {
   const master = vb.normalized;
   if (masterEl) masterEl.value = master;
 
-  const nombre = String(document.getElementById("rec-nombre")?.value || "").trim();
-  const categoria = String(document.getElementById("rec-categoria")?.value || "").trim();
-  const proveedor = String(document.getElementById("rec-proveedor")?.value || "").trim();
-  const pv = _toNum(document.getElementById("rec-pv")?.value || 0);
-  const pc = _toNum(document.getElementById("rec-pc")?.value || 0);
+  const nombre = String(document.getElementById("nombre")?.value || "").trim();
+  const categoria = String(document.getElementById("prod-categoria")?.value || "").trim();
+  const proveedor = String(document.getElementById("prod-proveedor")?.value || "").trim();
+  const pv = _toNum(document.getElementById("precio-venta")?.value || 0);
+  const pc = _toNum(document.getElementById("precio-compra")?.value || 0);
   const packs = Math.max(0, parseInt(document.getElementById("rec-packs")?.value || "0", 10) || 0);
   const upp = Math.max(0, parseInt(document.getElementById("rec-upp")?.value || "0", 10) || 0);
   let unitCode = sanitizeScanCode(String(document.getElementById("rec-unitcode")?.value || "").trim());
@@ -1348,6 +1348,12 @@ async function _camLoop() {
 window.camScanStart = async function(targetId) {
   if (rolActual !== "admin") return;
   if (targetId) _camScan.targetId = String(targetId);
+  else {
+    const ae = document.activeElement;
+    const id = String(ae?.id || "");
+    if (id === "codigo-barras" || id === "rec-unitcode" || id === "rec-packs" || id === "rec-upp") _camScan.targetId = id;
+    else _camScan.targetId = "codigo-barras";
+  }
   _camSetStatus("Iniciando cámara…", "warning");
   _camOpenModal(true);
   try {
@@ -1386,6 +1392,13 @@ window.stockBuscarCodigo = function(arg) {
   const code = vb.normalized;
   if (input) input.value = code;
   if (rolActual === "admin") _outsideIgnoreAdd(code);
+  try {
+    const pm = document.getElementById("pack-mode");
+    const isPack = pm && pm.checked;
+    const rm = document.getElementById("rec-master");
+    if (isPack && rm) rm.value = code;
+    if (isPack) setTimeout(() => { try { window.recDetectar?.(); } catch {} }, 30);
+  } catch {}
   const p = _stockFindProductByCode(code);
   const idEl = document.getElementById("nombre");
   const catEl = document.getElementById("prod-categoria");
@@ -1527,6 +1540,23 @@ window.agregarProducto = async function() {
     ["codigo-barras","nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
     if (codigoEl) codigoEl.dataset.foundId = "";
   }catch(e){mostrarMensaje("❌ Error: "+e.message,"error");}
+};
+
+window.guardarRegistroStock = async function() {
+  if (rolActual !== "admin") return;
+  const pm = document.getElementById("pack-mode");
+  const isPack = pm && pm.checked;
+  if (!isPack) return window.agregarProducto();
+  const codigoEl = document.getElementById("codigo-barras");
+  const raw = (codigoEl?.value || "").trim();
+  const cleaned = sanitizeScanCode(raw);
+  const vb = validateBarcode(cleaned, { allowLib: false });
+  if (!vb.ok) { _recSetMsg("Código maestro inválido. Usa EAN-13 / UPC-A / EAN-8.", "error"); return; }
+  const rm = document.getElementById("rec-master");
+  if (rm) rm.value = vb.normalized;
+  const sec = document.getElementById("rec-section");
+  if (sec) sec.style.display = "block";
+  return window.recConfirmar();
 };
 
 window.abrirEdicion = function(id){

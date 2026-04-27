@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260427d">
+  <link rel="stylesheet" href="style.css?v=20260427e">
 </head>
 <body>
 <input id="scanner" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0;" autocomplete="off"/>
@@ -410,85 +410,24 @@
     <div id="tab-agregar" class="tab-panel">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="card">
-          <div class="card-title">Recepción (paquetes → unidades)</div>
-          <div class="mb-3">
-            <label class="input-label">Código maestro del paquete (EAN/UPC) *</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="rec-master" class="input-field" placeholder="Escanea el paquete..." style="flex:1;" onkeydown="if(event.key==='Enter'){recDetectar();}">
-              <button onclick="camScanStart('rec-master')" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
-              <button onclick="recDetectar()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Detectar</button>
-            </div>
-            <div id="rec-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
-          </div>
-
-          <div class="mb-3"><label class="input-label">Producto (unidad) *</label><input id="rec-nombre" class="input-field" placeholder="Ej: Caja de lapiceros (unidad: lapicero)"></div>
-          <div class="grid grid-cols-2 gap-3 mb-3">
-            <div><label class="input-label">Categoría</label><input id="rec-categoria" class="input-field" placeholder="Ej: Útiles"></div>
-            <div><label class="input-label">Proveedor</label><input id="rec-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
-          </div>
-          <div class="grid grid-cols-2 gap-3 mb-3">
-            <div><label class="input-label">Precio venta (unidad) S/ *</label><input id="rec-pv" type="number" step="0.01" min="0" class="input-field" placeholder="3.50"></div>
-            <div><label class="input-label">Precio compra (unidad) S/</label><input id="rec-pc" type="number" step="0.01" min="0" class="input-field" placeholder="2.10"></div>
-          </div>
-          <div class="grid grid-cols-2 gap-3 mb-3">
-            <div><label class="input-label">Paquetes recibidos *</label><input id="rec-packs" type="number" min="1" class="input-field" placeholder="1"></div>
-            <div><label class="input-label">Unidades por paquete *</label><input id="rec-upp" type="number" min="1" class="input-field" placeholder="12"></div>
-          </div>
-          <div class="mb-3">
-            <label class="input-label">Código unidad (opcional)</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="rec-unitcode" class="input-field" placeholder="Si la unidad tiene código, escanéalo aquí..." style="flex:1;">
-              <button onclick="camScanStart('rec-unitcode')" class="btn" style="background:#eee;white-space:nowrap;">Cámara</button>
-              <button onclick="recGenerarSku()" class="btn" style="background:#eee;white-space:nowrap;">Generar SKU</button>
-            </div>
-            <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
-              Si las unidades no tienen código, usa “Generar SKU”. La venta será por unidades (und).
-            </div>
-          </div>
-
-          <button onclick="recConfirmar()" class="btn btn-primary" style="width:100%;justify-content:center;">Confirmar desagregación</button>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Escaneo desde celular (tiempo real)</div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;margin-bottom:12px;line-height:1.6;">
-            Crea una sesión en tu PC y escanea desde tu celular con cámara. Los códigos llegan en tiempo real.
-          </div>
-          <div class="grid grid-cols-2 gap-3 mb-3">
-            <button onclick="scanSesionCrear()" class="btn btn-primary" style="justify-content:center;">Crear sesión</button>
-            <button onclick="scanSesionCerrar()" class="btn btn-danger" style="justify-content:center;">Cerrar</button>
-          </div>
-          <div class="mb-2" style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;">
-            Sesión: <span id="scan-sesion" style="font-weight:900;">—</span>
-          </div>
-          <div class="mb-3" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#666;word-break:break-all;">
-            Link móvil: <a href="#" id="scan-link" onclick="scanAbrirLink();return false;" style="text-decoration:underline;">—</a>
-          </div>
-          <div class="grid grid-cols-2 gap-3 mb-3">
-            <input id="scan-join" class="input-field" placeholder="Sesión (6 dígitos)">
-            <button onclick="scanSesionUnir()" class="btn" style="justify-content:center;background:#eee;">Conectar</button>
-          </div>
-          <div id="scan-estado" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:10px;border:2px solid var(--border);border-radius:12px;background:var(--paper);">
-            Estado: <span id="scan-status-text">inactivo</span>
-          </div>
-        </div>
-        <!-- Manual -->
-        <div class="card">
-          <div class="card-title">o️ Agregar manual</div>
+          <div class="card-title">Registrar producto por escaneo</div>
           <div class="mb-3">
             <label class="input-label">Código de barras (EAN/UPC) o LIB- *</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="codigo-barras" class="input-field" placeholder="Escanea aquí..." style="flex:1;" onkeydown="if(event.key==='Enter'){stockBuscarCodigo();}">
-              <button onclick="camScanStart('codigo-barras')" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
-              <button onclick="stockBuscarCodigo()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Buscar</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input id="codigo-barras" class="input-field" placeholder="Escanea aquí..." style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter'){stockBuscarCodigo();}">
+              <button onclick="camScanStart()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
               <button onclick="stockBuscarOnline()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Internet</button>
             </div>
             <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
-              Si no existe en tu BD, “Internet” intenta autocompletar (puedes configurar proveedor con <a href="#" onclick="stockConfigLookup();return false;" style="text-decoration:underline;">Config</a>).
+              Escanea y el sistema autocompleta si ya existe. “Internet” intenta autocompletar si no existe (configurable).
             </div>
             <div id="stock-scan-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
           </div>
-          <div class="mb-3"><label class="input-label">Nombre *</label><input id="nombre" class="input-field" placeholder="Ej: Cuaderno Universitario 100h"></div>
+
+          <div class="mb-3">
+            <label class="input-label">Nombre *</label>
+            <input id="nombre" class="input-field" placeholder="Ej: Cuaderno Universitario 100h">
+          </div>
           <div class="grid grid-cols-2 gap-3 mb-3">
             <div><label class="input-label">Categoría</label><input id="prod-categoria" class="input-field" placeholder="Ej: Útiles"></div>
             <div><label class="input-label">Proveedor</label><input id="prod-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
@@ -501,7 +440,32 @@
             <label class="input-label">Precio compra S/</label>
             <input id="precio-compra" type="number" step="0.01" min="0" class="input-field" placeholder="2.10">
           </div>
-          <button onclick="agregarProducto()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar</button>
+
+          <div style="display:flex;gap:10px;align-items:center;margin:10px 0 6px;">
+            <input id="pack-mode" type="checkbox" style="width:18px;height:18px;">
+            <label for="pack-mode" style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:#444;">Es paquete (separar a unidades)</label>
+          </div>
+          <div id="rec-section" style="display:none;border:2px dashed var(--border);border-radius:14px;padding:12px;background:var(--paper);margin-top:10px;">
+            <div style="font-weight:900;margin-bottom:10px;">Recepción de paquete → unidades</div>
+            <input id="rec-master" style="display:none;">
+            <div id="rec-msg" style="display:none;margin-bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:#fff;border-radius:12px;"></div>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <div><label class="input-label">Paquetes recibidos *</label><input id="rec-packs" type="number" min="1" class="input-field" placeholder="1"></div>
+              <div><label class="input-label">Unidades por paquete *</label><input id="rec-upp" type="number" min="1" class="input-field" placeholder="12"></div>
+            </div>
+            <div class="mb-3">
+              <label class="input-label">Código unidad (opcional)</label>
+              <input id="rec-unitcode" class="input-field" placeholder="Si la unidad tiene código, escanéalo aquí (opcional)">
+              <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
+                Si no hay código por unidad, el sistema genera un SKU interno automáticamente.
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+            <button onclick="guardarRegistroStock()" class="btn btn-primary" style="flex:1;justify-content:center;min-width:180px;">Guardar</button>
+            <button onclick="stockConfigLookup()" class="btn" style="background:#eee;justify-content:center;min-width:160px;">Config Internet</button>
+          </div>
         </div>
         <!-- Excel -->
         <div class="card">
@@ -1347,4 +1311,4 @@
   })();
 </script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260427d'></script></body></html>
+<script type='module' src='app.js?v=20260427e'></script></body></html>
