@@ -70,52 +70,6 @@ function _timeoutSignal(ms) {
   return c.signal;
 }
 
-function _isScanMode() {
-  try {
-    const u = new URL(window.location.href);
-    return String(u.searchParams.get("scan") || "") === "1";
-  } catch {
-    return false;
-  }
-}
-
-async function _initScanMode() {
-  try {
-    const login = document.getElementById("login-screen");
-    const adm = document.getElementById("admin-screen");
-    const ven = document.getElementById("vendedor-screen");
-    const sm = document.getElementById("scan-mobile-screen");
-    if (login) login.style.display = "none";
-    if (adm) adm.style.display = "none";
-    if (ven) ven.style.display = "none";
-    if (sm) sm.style.display = "block";
-  } catch {}
-  try { await import(`./scan.js?v=20260427s`); } catch {}
-}
-
-window.scanModeOpen = function() {
-  try {
-    const sid = "ADMIN";
-    const u = new URL(window.location.href);
-    u.searchParams.set("scan", "1");
-    u.searchParams.set("session", sid);
-    u.searchParams.set("v", "20260427s");
-    window.location.href = u.toString();
-  } catch {}
-};
-
-window.scanModeExit = function() {
-  try {
-    const u = new URL(window.location.href);
-    u.searchParams.delete("scan");
-    u.searchParams.delete("session");
-    u.searchParams.delete("v");
-    window.location.href = u.toString();
-  } catch {
-    try { window.location.href = window.location.pathname; } catch {}
-  }
-};
-
 function scanServiceBase() {
   const override = localStorage.getItem("scan_svc_base");
   if (override) return override;
@@ -551,7 +505,6 @@ window.addEventListener("online", () => { try { _offlineFlush(true); } catch {} 
 setInterval(() => { try { _offlineFlush(false); } catch {} }, 8000);
 
 (function() {
-  if (_isScanMode()) { _initScanMode(); return; }
   const { rol, nombre } = leerSesion();
   if (rol === "admin") { activarAdmin(); }
   else if (rol === "vendedor" && nombre) { activarVendedor(nombre); }
@@ -1224,6 +1177,74 @@ let _scanSessUnsub = null;
 let _scanSessLastAt = 0;
 let _scanSessLastCode = "";
 const _scanSessKey = "scan_sess_active_v1";
+const _scanPcIdKey = "scan_pc_id_v1";
+const _scanTargetPcKey = "scan_target_pc_v1";
+
+let _scanPcId = "";
+let _scanTargetPcId = "";
+
+function _scanGetOrCreatePcId() {
+  try {
+    let id = String(localStorage.getItem(_scanPcIdKey) || "").trim();
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10).toUpperCase();
+      localStorage.setItem(_scanPcIdKey, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+function _scanLoadTargetPc() {
+  try { return String(localStorage.getItem(_scanTargetPcKey) || "").trim(); } catch { return ""; }
+}
+
+function _scanSaveTargetPc(pc) {
+  try {
+    const v = String(pc || "").trim();
+    if (v) localStorage.setItem(_scanTargetPcKey, v);
+    else localStorage.removeItem(_scanTargetPcKey);
+  } catch {}
+}
+
+function _scanMakePairText(sid, pc) {
+  const S = String(sid || "").trim().toUpperCase();
+  const P = String(pc || "").trim().toUpperCase();
+  if (!S || !P) return "";
+  return `LVP|SCAN|SID=${S}|PC=${P}`;
+}
+
+function _scanParsePairText(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  try {
+    const up = s.toUpperCase();
+    if (up.startsWith("LVP|SCAN|")) {
+      const parts = up.split("|").slice(2);
+      let sid = "";
+      let pc = "";
+      for (const p of parts) {
+        const i = p.indexOf("=");
+        if (i <= 0) continue;
+        const k = p.slice(0, i).trim();
+        const v = p.slice(i + 1).trim();
+        if (k === "SID") sid = v;
+        if (k === "PC") pc = v;
+      }
+      if (sid && pc) return { sid, pc };
+    }
+  } catch {}
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s);
+      const sid = String(u.searchParams.get("session") || "").trim().toUpperCase();
+      const pc = String(u.searchParams.get("pc") || "").trim().toUpperCase();
+      if (sid && pc) return { sid, pc };
+    }
+  } catch {}
+  return null;
+}
 
 function _scanUiSet(text) {
   const el = document.getElementById("scan-status-text");
@@ -1234,42 +1255,34 @@ function _scanUiSet(text) {
       try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
     }
   } catch {}
+  try {
+    if (!_scanPcId) _scanPcId = _scanGetOrCreatePcId();
+    if (!_scanTargetPcId) _scanTargetPcId = _scanLoadTargetPc();
+  } catch {}
   const sid = document.getElementById("scan-sesion");
   if (sid) sid.textContent = _scanSessId || "—";
   const link = document.getElementById("scan-link");
   if (link) {
     if (_scanSessId) {
-      const u = (function() {
-        const ver = "20260427s";
-        const sid = encodeURIComponent(String(_scanSessId || "").trim());
-        const basePath = window.location.pathname.replace(/index\.html?$/i, "");
-        const localRoot = `${window.location.origin}${basePath}`;
-        const localUrl = `${localRoot}?scan=1&v=${ver}&session=${sid}`;
-        if (window.location.protocol === "https:") return localUrl;
-        if (String(window.location.hostname || "").includes("github.io")) return localUrl;
-        const cfg = String(localStorage.getItem("scan_mobile_base") || "").trim();
-        const gh = cfg || "https://moisesohs1007.github.io/libreria-stock/";
-        const root = gh.endsWith("/") ? gh : (gh + "/");
-        return `${root}?scan=1&v=${ver}&session=${sid}`;
-      })();
-      link.textContent = u;
-      link.dataset.url = u;
+      const pair = _scanMakePairText(_scanSessId, _scanPcId);
+      link.textContent = _scanPcId ? `PC: ${_scanPcId}` : "—";
+      link.dataset.pair = pair || "";
     } else {
       link.textContent = "—";
-      link.dataset.url = "";
+      link.dataset.pair = "";
     }
   }
   try {
     const box = document.getElementById("scan-qr");
-    const url = String(document.getElementById("scan-link")?.dataset?.url || "").trim();
+    const pair = String(document.getElementById("scan-link")?.dataset?.pair || "").trim();
     if (box) {
       const render = () => {
         try {
           box.innerHTML = "";
-          if (!url) { box.textContent = "Sin link"; return true; }
+          if (!pair) { box.textContent = "Sin QR"; return true; }
           try {
             if (typeof window.QRCode === "function") {
-              new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
+              new window.QRCode(box, { text: pair, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
               return true;
             }
           } catch {}
@@ -1283,7 +1296,7 @@ function _scanUiSet(text) {
           img.loading = "eager";
           img.decoding = "async";
           img.referrerPolicy = "no-referrer";
-          img.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(url)}`;
+          img.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(pair)}`;
           img.onerror = () => {
             try { box.textContent = "No se pudo cargar QR"; } catch {}
           };
@@ -1334,7 +1347,12 @@ async function _scanStartListener(sid) {
       const data = d.data() || {};
       const code = String(data.code || "").trim();
       const at = _toNum(data.at?.toMillis?.() || data.clientAt);
+      const pc = String(data.pc || "").trim().toUpperCase();
       if (!code) continue;
+      if (_scanPcId) {
+        if (!pc) continue;
+        if (pc !== String(_scanPcId || "").trim().toUpperCase()) continue;
+      }
       if (at && at > _scanSessLastAt) _scanSessLastAt = at;
       if (code === _scanSessLastCode && (Date.now() - (at || 0)) < 1200) continue;
       _scanSessLastCode = code;
@@ -1428,16 +1446,18 @@ function _scanSessGetId() {
   }
 }
 
-async function _scanSessSend(code, source) {
+async function _scanSessSend(code, source, meta) {
   const sid = String(_scanSessGetId() || "").trim();
   if (!sid) return false;
   if (!/^[A-Z0-9_-]{3,32}$/i.test(sid)) return false;
   const c = sanitizeScanCode(code);
   if (!c) return false;
+  const pc = String(meta?.pc || "").trim().toUpperCase();
   try {
     const { rol, nombre, user_id, usuario } = leerSesion();
     await addDoc(collection(db, "scan_sessions", sid, "events"), {
       code: c,
+      pc,
       at: serverTimestamp(),
       clientAt: Date.now(),
       source: String(source || ""),
@@ -1558,19 +1578,27 @@ async function _camLoop() {
     const hits = await det.detect(v);
     if (Array.isArray(hits) && hits.length) {
       const raw = String(hits[0]?.rawValue || "").trim();
-      try {
-        if (/^https?:\/\//i.test(raw)) {
-          const u = new URL(raw);
-          const isScan = String(u.searchParams.get("scan") || "") === "1";
-          const sess = String(u.searchParams.get("session") || "").trim();
-          if (isScan || sess) {
-            _camSetStatus("✅ QR detectado. Abriendo…", "ok");
-            window.camScanStop();
-            setTimeout(() => { try { window.location.href = raw; } catch {} }, 120);
-            return;
-          }
+      const syncOn = !!document.getElementById("sync-with-pc")?.checked;
+      const pair = _scanParsePairText(raw);
+      if (pair) {
+        if (!syncOn) {
+          _camSetStatus("Activa “Sincronizar con PC (usar QR)” para enlazar.", "warning");
+          return;
         }
-      } catch {}
+        if (rolActual !== "admin") {
+          _camSetStatus("Solo Admin puede sincronizar con PC.", "warning");
+          return;
+        }
+        _scanPcId = _scanPcId || _scanGetOrCreatePcId();
+        _scanSessId = String(pair.sid || "").trim().toUpperCase();
+        _scanTargetPcId = String(pair.pc || "").trim().toUpperCase();
+        _scanSaveTargetPc(_scanTargetPcId);
+        try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
+        _scanUiSet("conectado");
+        _camSetStatus("✅ PC enlazada. Ahora escanea productos.", "ok");
+        window.camScanStop();
+        return;
+      }
       const cleaned = sanitizeScanCode(raw);
       const vb = validateBarcode(cleaned, { allowLib: true });
       if (!vb.ok) {
@@ -1581,8 +1609,16 @@ async function _camLoop() {
         _camScan.last = code;
         _camScan.lastAt = Date.now();
         _camSetStatus(`✅ Detectado: ${code}`, "ok");
-        _camApplyToTarget(code);
-        await _scanSessSend(code, "camera");
+        if (syncOn) {
+          const targetPc = String(_scanTargetPcId || _scanLoadTargetPc() || "").trim().toUpperCase();
+          if (!targetPc) {
+            _camSetStatus("Primero escanea el QR de la PC para sincronizar.", "warning");
+            return;
+          }
+          await _scanSessSend(code, "camera", { pc: targetPc });
+        }
+        const isMobile = (() => { try { return window.matchMedia && window.matchMedia("(max-width: 980px)").matches; } catch { return false; } })();
+        if (!(syncOn && isMobile)) _camApplyToTarget(code);
         window.camScanStop();
         return;
       }
@@ -1615,7 +1651,14 @@ window.camScanStart = async function(targetId) {
       try { await v.play(); } catch {}
     }
     _camScan.running = true;
-    _camSetStatus("Apunta al código…", "warning");
+    try {
+      const syncOn = !!document.getElementById("sync-with-pc")?.checked;
+      const targetPc = String(_scanTargetPcId || _scanLoadTargetPc() || "").trim();
+      if (syncOn && !targetPc) _camSetStatus("Primero apunta al QR de la PC para sincronizar…", "warning");
+      else _camSetStatus("Apunta al código…", "warning");
+    } catch {
+      _camSetStatus("Apunta al código…", "warning");
+    }
     setTimeout(_camLoop, 120);
   } catch {
     _camSetStatus("Permiso denegado o no hay cámara disponible.", "error");

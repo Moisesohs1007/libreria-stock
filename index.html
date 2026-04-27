@@ -18,81 +18,6 @@
 <div id="mensaje"></div>
 
 <!-- =============================================
-     ESCÁNER MÓVIL (MISMA URL)
-============================================= -->
-<div id="scan-mobile-screen" style="display:none;background:#020617;min-height:100vh;color:#fff;">
-  <div style="max-width:540px;margin:0 auto;padding:16px;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-      <img src="virgen.png" style="width:40px;height:40px;border-radius:14px;background:#fff;padding:4px;border:1px solid #1e293b;" onerror="this.style.display='none'">
-      <div>
-        <div style="font-weight:900;letter-spacing:1px;">LIBRERÍA</div>
-        <div style="font-size:12px;color:#cbd5e1;letter-spacing:2px;">ESCÁNER MÓVIL</div>
-      </div>
-    </div>
-
-    <div style="background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:18px;padding:14px;margin-bottom:12px;">
-      <div style="font-size:12px;color:#94a3b8;font-family:'IBM Plex Mono',monospace;">Sesión</div>
-      <div id="sess" style="font-size:28px;font-weight:900;letter-spacing:1px;">—</div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Estado: <span id="st" style="font-family:'IBM Plex Mono',monospace;">inactivo</span></div>
-      <div style="margin-top:6px;font-size:11px;color:#64748b;font-family:'IBM Plex Mono',monospace;">v20260427s</div>
-    </div>
-
-    <div style="background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:18px;padding:14px;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div style="font-weight:900;">Sincronizar con PC</div>
-          <div style="font-size:12px;color:#94a3b8;line-height:1.4;">Si lo desactivas, los códigos se guardan solo en este celular.</div>
-        </div>
-        <input id="sync" type="checkbox" style="display:none" checked>
-        <button id="syncBtn" style="padding:10px 14px;border-radius:16px;background:#059669;color:#fff;font-weight:900;font-size:14px;white-space:nowrap;">
-          SINCRONIZAR: SÍ
-        </button>
-      </div>
-    </div>
-
-    <div id="connect-card" style="background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:18px;padding:14px;margin-bottom:12px;">
-      <div style="font-weight:900;margin-bottom:10px;">Conectar</div>
-      <div style="display:flex;gap:10px;">
-        <input id="code" style="flex:1;padding:10px 12px;border-radius:14px;background:#020617;border:1px solid #1e293b;color:#fff;font-family:'IBM Plex Mono',monospace;" placeholder="Sesión (ej: ADMIN)">
-        <button id="btnConnect" style="padding:10px 14px;border-radius:14px;background:#10b981;color:#fff;font-weight:900;">OK</button>
-      </div>
-      <div style="margin-top:8px;font-size:12px;color:#94a3b8;">Si no hay sesión, apunta al QR de la PC para conectarte.</div>
-    </div>
-
-    <div style="background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:18px;padding:14px;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-weight:900;">Cámara</div>
-        <button id="btnCam" style="padding:8px 12px;border-radius:14px;background:#1e293b;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:12px;">Iniciar</button>
-      </div>
-      <div style="position:relative;">
-        <video id="v" style="width:100%;border-radius:16px;background:#000;border:1px solid #1e293b;" playsinline muted></video>
-        <div style="pointer-events:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
-          <div style="width:min(70%,260px);height:min(70%,260px);border:2px solid rgba(16,185,129,.9);border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);"></div>
-        </div>
-        <div style="pointer-events:none;position:absolute;bottom:8px;left:8px;right:8px;text-align:center;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#e2e8f0;background:rgba(2,6,23,.6);border:1px solid #1e293b;border-radius:14px;padding:6px 10px;">
-          Primero apunta al QR de la PC (si Sync está activado), luego escanea productos.
-        </div>
-      </div>
-      <canvas id="c" style="display:none;"></canvas>
-    </div>
-
-    <div style="background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:18px;padding:14px;">
-      <div style="font-weight:900;margin-bottom:10px;">Último</div>
-      <div id="last" style="font-family:'IBM Plex Mono',monospace;font-size:18px;">—</div>
-      <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#94a3b8;">
-        <div>Guardados: <span id="localCount" style="font-family:'IBM Plex Mono',monospace;font-weight:900;">0</span></div>
-        <button id="btnClearLocal" style="padding:8px 12px;border-radius:14px;background:#1e293b;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:12px;">Limpiar</button>
-      </div>
-      <div style="margin-top:10px;display:flex;gap:10px;">
-        <input id="manual" style="flex:1;padding:10px 12px;border-radius:14px;background:#020617;border:1px solid #1e293b;color:#fff;font-family:'IBM Plex Mono',monospace;" placeholder="Ingresar/pegar código">
-        <button id="btnSend" style="padding:10px 14px;border-radius:14px;background:#4f46e5;color:#fff;font-weight:900;">Enviar</button>
-      </div>
-      <div style="margin-top:8px;font-size:12px;color:#94a3b8;">Buffer offline: si se va la conexión, se reintenta al volver.</div>
-    </div>
-  </div>
-</div>
-
-<!-- =============================================
      PANTALLA DE LOGIN
 ============================================= -->
 <div id="login-screen">
@@ -497,9 +422,8 @@
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#666;letter-spacing:.5px;text-transform:uppercase;">Escáner celular</div>
                 <div style="flex:1;min-width:220px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  <span id="scan-link" class="mono" data-url="">—</span>
+                  <span id="scan-link" class="mono" data-pair="">—</span>
                 </div>
-                <button onclick="scanModeOpen()" class="btn btn-primary only-mobile" style="justify-content:center;white-space:nowrap;">Modo escáner</button>
               </div>
               <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;">
                 <div class="only-desktop" style="display:flex;flex-direction:column;gap:8px;align-items:center;">
@@ -516,6 +440,10 @@
                   <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#666;display:flex;gap:12px;flex-wrap:wrap;">
                     <div>Sesión: <span id="scan-sesion" class="mono" style="font-weight:900;">—</span></div>
                     <div>Estado: <span id="scan-status-text" class="mono" style="font-weight:900;">—</span></div>
+                  </div>
+                  <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <input id="sync-with-pc" type="checkbox" style="width:18px;height:18px;" checked>
+                    <label for="sync-with-pc" style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:#444;">Sincronizar con PC (usar QR)</label>
                   </div>
                 </div>
               </div>
