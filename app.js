@@ -7,10 +7,10 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db, storage } from './firebase-config.js?v=20260427a';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427a';
-import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427a';
-import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427a';
+import { db, storage } from './firebase-config.js?v=20260427b';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427b';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427b';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit
@@ -149,6 +149,36 @@ function mostrarMensaje(texto, tipo="ok") {
   window._msgTimer = setTimeout(() => el.classList.remove("visible"), 3000);
 }
 window.mostrarMensaje = mostrarMensaje;
+
+window.toggleDtGroup = window.toggleDtGroup || function(groupId) {
+  try {
+    const grp = document.getElementById(groupId);
+    if (!grp) return;
+    const isOpen = grp.classList.contains("open");
+    document.querySelectorAll(".dt-group").forEach(g => g.classList.remove("open"));
+    if (!isOpen) grp.classList.add("open");
+  } catch {}
+};
+
+window.selDt = window.selDt || function(tabId, btnId, titulo, groupId) {
+  try {
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    document.querySelectorAll(".dt-drop-item").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".dt-group").forEach(g => g.classList.remove("active-group", "open"));
+    document.querySelectorAll(".sidebar-btn").forEach(b => b.classList.remove("active"));
+    const panel = document.getElementById(tabId);
+    if (panel) panel.classList.add("active");
+    const btn = document.getElementById(btnId);
+    if (btn) btn.classList.add("active");
+    const grp = document.getElementById(groupId);
+    if (grp) grp.classList.add("active-group");
+    const sbId = String(btnId || "").replace("dt-", "sb-");
+    const sb = document.getElementById(sbId);
+    if (sb) sb.classList.add("active");
+    const seccion = document.getElementById("seccion-activa");
+    if (seccion) seccion.textContent = titulo || "";
+  } catch {}
+};
 
 function _updateLowStockBanner() {
   const card = document.getElementById("v-low-stock-card");
