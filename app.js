@@ -1193,7 +1193,7 @@ function _scanUiSet(text) {
   if (link) {
     if (_scanSessId) {
       const u = (function() {
-        const ver = "20260427r";
+        const ver = "20260427s";
         const sid = encodeURIComponent(String(_scanSessId || "").trim());
         const basePath = window.location.pathname.replace(/index\.html?$/i, "");
         const localUrl = `${window.location.origin}${basePath}scan.html?v=${ver}&session=${sid}`;

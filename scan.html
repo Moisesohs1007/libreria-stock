@@ -20,16 +20,20 @@
         <div class="text-xs text-slate-400 font-mono">Sesión</div>
         <div class="text-2xl font-black" id="sess">—</div>
         <div class="text-xs text-slate-400 mt-2">Estado: <span id="st" class="font-mono">inactivo</span></div>
+        <div class="mt-2 text-[11px] text-slate-500 font-mono">v20260427s</div>
       </div>
 
       <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 mb-3">
-        <label class="flex items-center gap-3">
-          <input id="sync" type="checkbox" class="w-5 h-5 accent-emerald-500" checked>
+        <div class="flex items-center justify-between gap-4">
           <div>
             <div class="text-sm font-bold">Sincronizar con PC</div>
             <div class="text-xs text-slate-400">Si lo desactivas, los códigos se guardan solo en este celular.</div>
           </div>
-        </label>
+          <input id="sync" type="checkbox" class="hidden" checked>
+          <button id="syncBtn" class="px-4 py-3 rounded-2xl bg-emerald-600 font-black text-sm whitespace-nowrap">
+            SINCRONIZAR: SÍ
+          </button>
+        </div>
       </div>
 
       <div id="connect-card" class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 mb-3">
@@ -74,6 +78,6 @@
       </div>
     </div>
 
-    <script type="module" src="scan.js?v=20260427r"></script>
+    <script type="module" src="scan.js?v=20260427s"></script>
   </body>
 </html>

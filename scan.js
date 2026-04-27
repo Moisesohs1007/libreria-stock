@@ -1,4 +1,4 @@
-import { db } from "./firebase-config.js?v=20260427r";
+import { db } from "./firebase-config.js?v=20260427s";
 import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427k";
 import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -30,6 +30,18 @@ const state = {
 function setStatus(txt) {
   const el = $("st");
   if (el) el.textContent = txt;
+}
+
+function _syncUiUpdate() {
+  const btn = $("syncBtn");
+  if (!btn) return;
+  if (state.syncEnabled) {
+    btn.textContent = "SINCRONIZAR: SÍ";
+    btn.className = "px-4 py-3 rounded-2xl bg-emerald-600 font-black text-sm whitespace-nowrap";
+  } else {
+    btn.textContent = "SINCRONIZAR: NO";
+    btn.className = "px-4 py-3 rounded-2xl bg-slate-800 font-black text-sm whitespace-nowrap";
+  }
 }
 
 function _loadLocal() {
@@ -270,6 +282,7 @@ $("btnCam").addEventListener("click", () => {
 
 function setSyncEnabled(v) {
   state.syncEnabled = !!v;
+  _syncUiUpdate();
   const card = $("connect-card");
   if (card) card.style.display = state.syncEnabled ? "" : "none";
   if (!state.syncEnabled) {
@@ -288,6 +301,18 @@ try {
   if (s) {
     s.addEventListener("change", () => setSyncEnabled(s.checked));
     setSyncEnabled(!!s.checked);
+  }
+} catch {}
+
+try {
+  const btn = $("syncBtn");
+  const s = $("sync");
+  if (btn && s) {
+    btn.addEventListener("click", () => {
+      s.checked = !s.checked;
+      setSyncEnabled(s.checked);
+    });
+    _syncUiUpdate();
   }
 } catch {}
 
