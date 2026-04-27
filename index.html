@@ -287,6 +287,7 @@
         <!-- INVENTARIO -->
         <div class="sb-group-title">Inventario</div>
         <button class="sidebar-btn"        id="sb-inventario" onclick="cambiarTabSidebar('tab-inventario','sb-inventario','Inventario TP')">  Inventario TP</button>
+        <button class="sidebar-btn"        id="sb-recepcion"  onclick="cambiarTabSidebar('tab-recepcion','sb-recepcion','Recepción')">  Recepción</button>
         <button class="sidebar-btn"        id="sb-agregar"    onclick="cambiarTabSidebar('tab-agregar','sb-agregar','Agregar producto')">  Agregar producto</button>
         <button class="sidebar-btn"        id="sb-historial"  onclick="cambiarTabSidebar('tab-historial','sb-historial','Historial')">  Historial</button>
 
@@ -335,6 +336,7 @@
         <button class="dt-group-btn" onclick="toggleDtGroup('dtg-inventario')">Inventario -</button>
         <div class="dt-dropdown">
           <button class="dt-drop-item" id="dt-inventario" onclick="selDt('tab-inventario','dt-inventario','Inventario TP','dtg-inventario')">Inventario TP</button>
+          <button class="dt-drop-item" id="dt-recepcion"  onclick="selDt('tab-recepcion','dt-recepcion','Recepción','dtg-inventario')">Recepción</button>
           <button class="dt-drop-item" id="dt-agregar"    onclick="selDt('tab-agregar','dt-agregar','Agregar producto','dtg-inventario')">Agregar producto</button>
           <button class="dt-drop-item" id="dt-historial"  onclick="selDt('tab-historial','dt-historial','Historial','dtg-inventario')">Historial</button>
         </div>
@@ -402,6 +404,72 @@
             <thead><tr><th>Nombre</th><th>Código</th><th>Stock</th><th>Precio venta</th><th>Precio compra</th><th>Acciones</th></tr></thead>
             <tbody id="inventario"><tr><td colspan="6" style="text-align:center;color:#aaa;padding:24px;font-family:'IBM Plex Mono',monospace;">Cargando...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB RECEPCIÓN -->
+    <div id="tab-recepcion" class="tab-panel">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title">Recepción de mercancía (paquetes → unidades)</div>
+          <div class="mb-3">
+            <label class="input-label">Código maestro del paquete (EAN/UPC) *</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="rec-master" class="input-field" placeholder="Escanea el paquete..." style="flex:1;" onkeydown="if(event.key==='Enter'){recDetectar();}">
+              <button onclick="recDetectar()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Detectar</button>
+            </div>
+            <div id="rec-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
+          </div>
+
+          <div class="mb-3"><label class="input-label">Producto (unidad) *</label><input id="rec-nombre" class="input-field" placeholder="Ej: Caja de lapiceros (unidad: lapicero)"></div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Categoría</label><input id="rec-categoria" class="input-field" placeholder="Ej: Útiles"></div>
+            <div><label class="input-label">Proveedor</label><input id="rec-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Precio venta (unidad) S/ *</label><input id="rec-pv" type="number" step="0.01" min="0" class="input-field" placeholder="3.50"></div>
+            <div><label class="input-label">Precio compra (unidad) S/</label><input id="rec-pc" type="number" step="0.01" min="0" class="input-field" placeholder="2.10"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="input-label">Paquetes recibidos *</label><input id="rec-packs" type="number" min="1" class="input-field" placeholder="1"></div>
+            <div><label class="input-label">Unidades por paquete *</label><input id="rec-upp" type="number" min="1" class="input-field" placeholder="12"></div>
+          </div>
+          <div class="mb-3">
+            <label class="input-label">Código unidad (opcional)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="rec-unitcode" class="input-field" placeholder="Si la unidad tiene código, escanéalo aquí..." style="flex:1;">
+              <button onclick="recGenerarSku()" class="btn" style="background:#eee;white-space:nowrap;">Generar SKU</button>
+            </div>
+            <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
+              Si las unidades no tienen código, usa “Generar SKU”. La venta será por unidades (und).
+            </div>
+          </div>
+
+          <button onclick="recConfirmar()" class="btn btn-primary" style="width:100%;justify-content:center;">Confirmar desagregación</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Sesión de escaneo multi-dispositivo</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;margin-bottom:12px;line-height:1.6;">
+            Abre una sesión en tu PC y escanea desde tu celular con cámara. Los códigos llegan en tiempo real.
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <button onclick="scanSesionCrear()" class="btn btn-primary" style="justify-content:center;">Crear sesión</button>
+            <button onclick="scanSesionCerrar()" class="btn btn-danger" style="justify-content:center;">Cerrar</button>
+          </div>
+          <div class="mb-2" style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;">
+            Sesión: <span id="scan-sesion" style="font-weight:900;">—</span>
+          </div>
+          <div class="mb-3" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#666;word-break:break-all;">
+            Link móvil: <a href="#" id="scan-link" onclick="scanAbrirLink();return false;" style="text-decoration:underline;">—</a>
+          </div>
+          <div id="scan-estado" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:10px;border:2px solid var(--border);border-radius:12px;background:var(--paper);">
+            Estado: <span id="scan-status-text">inactivo</span>
+          </div>
+          <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#777;line-height:1.5;">
+            Tip: abre “Agregar producto” o “Recepción” y los escaneos entrantes rellenarán el campo de código automáticamente.
+          </div>
         </div>
       </div>
     </div>

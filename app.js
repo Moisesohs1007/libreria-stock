@@ -13,7 +13,7 @@ import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } f
 import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260426b';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
-  increment, deleteDoc, Timestamp, runTransaction, setDoc
+  increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   ref as storageRef, uploadBytes, getDownloadURL
@@ -329,6 +329,18 @@ function activarAdmin() {
   try { localStorage.setItem("outside_queue_enabled", "0"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
+  try {
+    const sid = localStorage.getItem(_scanSessKey) || "";
+    if (/^\d{6}$/.test(String(sid))) {
+      _scanSessId = String(sid);
+      _scanUiSet("restaurando…");
+      setTimeout(() => { try { _scanStartListener(_scanSessId); } catch {} }, 350);
+    } else {
+      _scanUiSet("inactivo");
+    }
+  } catch {
+    _scanUiSet("inactivo");
+  }
 }
 
 function activarVendedor(nombre) {
@@ -408,6 +420,10 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  } else if (tabId === "tab-recepcion") {
+    const el = document.getElementById("rec-master");
+    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
+    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -448,6 +464,10 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   if (seccion) seccion.textContent = titulo;
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
+    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
+    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+  } else if (tabId === "tab-recepcion") {
+    const el = document.getElementById("rec-master");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
@@ -830,6 +850,347 @@ function _stockFindProductByCode(code) {
   }
   return null;
 }
+
+function _recSetMsg(texto, tipo) {
+  const box = document.getElementById("rec-msg");
+  if (!box) return;
+  if (!texto) { box.style.display = "none"; box.textContent = ""; return; }
+  box.style.display = "block";
+  box.textContent = texto;
+  box.style.borderColor = tipo === "error" ? "#ef4444" : (tipo === "ok" ? "#16a34a" : "var(--border)");
+  box.style.color = tipo === "error" ? "#991b1b" : (tipo === "ok" ? "#065f46" : "#444");
+  box.style.background = tipo === "error" ? "#fee2e2" : (tipo === "ok" ? "#d1fae5" : "var(--paper)");
+}
+
+function _genSku() {
+  const s = Date.now().toString(36).toUpperCase();
+  const r = Math.random().toString(36).toUpperCase().slice(2, 6);
+  return `SKU-${s.slice(-6)}${r}`;
+}
+
+async function _findProductByCodeRemote(code) {
+  const vb = validateBarcode(code, { allowLib: true });
+  const normalized = vb.ok ? vb.normalized : sanitizeScanCode(code);
+  if (!normalized) return null;
+  const qy = query(collection(db, "productos"), where("codigo", "==", normalized));
+  const snap = await getDocs(qy);
+  const d = snap.docs[0];
+  if (!d) return null;
+  return { id: d.id, ...d.data() };
+}
+
+window.recGenerarSku = function() {
+  if (rolActual !== "admin") return;
+  const el = document.getElementById("rec-unitcode");
+  if (!el) return;
+  const v = _genSku();
+  el.value = v;
+  _outsideIgnoreAdd(v);
+  _recSetMsg(`SKU generado: ${v}`, "ok");
+};
+
+window.recDetectar = async function() {
+  if (rolActual !== "admin") return;
+  const input = document.getElementById("rec-master");
+  const raw = (input?.value || "").trim();
+  const cleaned = sanitizeScanCode(raw);
+  if (!cleaned) return _recSetMsg("Escanea el código maestro del paquete.", "warning");
+  const vb = validateBarcode(cleaned, { allowLib: false });
+  if (!vb.ok) return _recSetMsg("Código maestro inválido. Usa EAN-13 / UPC-A / EAN-8.", "error");
+  const code = vb.normalized;
+  if (input) input.value = code;
+  _outsideIgnoreAdd(code);
+
+  const p = _stockFindProductByCode(code) || (await (async () => { try { return await _findProductByCodeRemote(code); } catch { return null; } })());
+  if (p && p.pack && typeof p.pack === "object") {
+    const upp = _toNum(p.pack.units_per_pack);
+    const unitCode = String(p.pack.unit_code || "").trim();
+    const unitName = String(p.pack.unit_name || "").trim();
+    const uppEl = document.getElementById("rec-upp");
+    const ucEl = document.getElementById("rec-unitcode");
+    const nmEl = document.getElementById("rec-nombre");
+    if (uppEl && upp) uppEl.value = String(upp);
+    if (ucEl && unitCode && !String(ucEl.value || "").trim()) ucEl.value = unitCode;
+    if (nmEl && unitName && !String(nmEl.value || "").trim()) nmEl.value = unitName;
+    _recSetMsg("Paquete reconocido. Completa y confirma desagregación.", "ok");
+  } else {
+    _recSetMsg("Paquete no registrado aún. Completa los datos y confirma desagregación.", "warning");
+  }
+};
+
+window.recConfirmar = async function() {
+  if (rolActual !== "admin") return;
+  const masterEl = document.getElementById("rec-master");
+  const rawMaster = String(masterEl?.value || "").trim();
+  const cleaned = sanitizeScanCode(rawMaster);
+  const vb = validateBarcode(cleaned, { allowLib: false });
+  if (!vb.ok) return _recSetMsg("Código maestro inválido (EAN/UPC).", "error");
+  const master = vb.normalized;
+  if (masterEl) masterEl.value = master;
+
+  const nombre = String(document.getElementById("rec-nombre")?.value || "").trim();
+  const categoria = String(document.getElementById("rec-categoria")?.value || "").trim();
+  const proveedor = String(document.getElementById("rec-proveedor")?.value || "").trim();
+  const pv = _toNum(document.getElementById("rec-pv")?.value || 0);
+  const pc = _toNum(document.getElementById("rec-pc")?.value || 0);
+  const packs = Math.max(0, parseInt(document.getElementById("rec-packs")?.value || "0", 10) || 0);
+  const upp = Math.max(0, parseInt(document.getElementById("rec-upp")?.value || "0", 10) || 0);
+  let unitCode = sanitizeScanCode(String(document.getElementById("rec-unitcode")?.value || "").trim());
+
+  if (!nombre) return _recSetMsg("Falta el nombre del producto (unidad).", "error");
+  if (!Number.isFinite(pv) || pv <= 0) return _recSetMsg("Precio venta inválido.", "error");
+  if (!Number.isFinite(pc) || pc < 0) return _recSetMsg("Precio compra inválido.", "error");
+  if (!packs || packs <= 0) return _recSetMsg("Paquetes recibidos inválido.", "error");
+  if (!upp || upp <= 0) return _recSetMsg("Unidades por paquete inválido.", "error");
+
+  if (unitCode) {
+    const vbu = validateBarcode(unitCode, { allowLib: true });
+    if (!vbu.ok) return _recSetMsg("Código unidad inválido (EAN/UPC) o SKU/LIB.", "error");
+    unitCode = vbu.normalized;
+  } else {
+    unitCode = _genSku();
+    const uEl = document.getElementById("rec-unitcode");
+    if (uEl) uEl.value = unitCode;
+  }
+
+  const unitsTotal = packs * upp;
+  const { rol, nombre: actorNombre, user_id, usuario } = leerSesion();
+  const actor = { rol: rol || "", nombre: actorNombre || "", user_id: user_id || "", usuario: usuario || "" };
+
+  _outsideIgnoreAdd(master);
+  _outsideIgnoreAdd(unitCode);
+  _recSetMsg("Registrando…", "warning");
+
+  let pkg = _stockFindProductByCode(master);
+  let unit = _stockFindProductByCode(unitCode);
+  if (!pkg) { try { pkg = await _findProductByCodeRemote(master); } catch {} }
+  if (!unit) { try { unit = await _findProductByCodeRemote(unitCode); } catch {} }
+
+  const pkgRef = pkg?.id ? doc(db, "productos", pkg.id) : doc(collection(db, "productos"));
+  const unitRef = unit?.id ? doc(db, "productos", unit.id) : doc(collection(db, "productos"));
+  const movRef = doc(collection(db, "inventory_movements"));
+
+  let beforePkg = null;
+  let beforeUnit = null;
+  let afterPkg = null;
+  let afterUnit = null;
+  const now = new Date();
+
+  try {
+    await runTransaction(db, async (tx) => {
+      if (pkg?.id) {
+        const s = await tx.get(pkgRef);
+        beforePkg = s.exists() ? { id: pkgRef.id, ...s.data() } : null;
+      }
+      if (unit?.id) {
+        const s = await tx.get(unitRef);
+        beforeUnit = s.exists() ? { id: unitRef.id, ...s.data() } : null;
+      }
+
+      const pkgCurStock = _toNum(beforePkg?.stock);
+      const unitCurStock = _toNum(beforeUnit?.stock);
+
+      afterPkg = {
+        codigo: master,
+        nombre: String(beforePkg?.nombre || `Paquete: ${nombre}`).trim(),
+        stock: pkgCurStock + packs,
+        precio_venta: _toNum(beforePkg?.precio_venta),
+        precio_compra: _toNum(beforePkg?.precio_compra),
+        precio: _toNum(beforePkg?.precio_venta),
+        categoria: categoria || String(beforePkg?.categoria || ""),
+        proveedor: proveedor || String(beforePkg?.proveedor || ""),
+        unidad: "paq",
+        pack: { units_per_pack: upp, unit_code: unitCode, unit_name: nombre }
+      };
+
+      afterUnit = {
+        codigo: unitCode,
+        nombre,
+        stock: unitCurStock + unitsTotal,
+        precio_venta: pv,
+        precio_compra: pc,
+        precio: pv,
+        categoria,
+        proveedor,
+        unidad: "und",
+        pack: { master_code: master, units_per_pack: upp }
+      };
+
+      if (pkg?.id) tx.update(pkgRef, { ...afterPkg, actualizadoEn: now });
+      else tx.set(pkgRef, { ...afterPkg, creadoEn: now });
+
+      if (unit?.id) tx.update(unitRef, { ...afterUnit, actualizadoEn: now });
+      else tx.set(unitRef, { ...afterUnit, creadoEn: now });
+
+      tx.set(movRef, {
+        tipo: "deaggregate_pack",
+        master_code: master,
+        unit_code: unitCode,
+        packs,
+        units_per_pack: upp,
+        units_total: unitsTotal,
+        producto_paquete_id: pkgRef.id,
+        producto_unidad_id: unitRef.id,
+        fecha_desagregacion: now,
+        responsable: actor,
+        before: { paquete: beforePkg ? { stock: _toNum(beforePkg.stock) } : null, unidad: beforeUnit ? { stock: _toNum(beforeUnit.stock) } : null },
+        after: { paquete: { stock: afterPkg.stock }, unidad: { stock: afterUnit.stock } },
+        creadoEn: now
+      });
+    });
+
+    await _auditLog(pkg?.id ? "update" : "create", "productos", pkgRef.id, beforePkg, { ...(beforePkg || {}), ...afterPkg });
+    await _auditLog(unit?.id ? "update" : "create", "productos", unitRef.id, beforeUnit, { ...(beforeUnit || {}), ...afterUnit });
+    await _auditLog("create", "inventory_movements", movRef.id, null, { master_code: master, unit_code: unitCode, packs, units_total: unitsTotal });
+
+    _recSetMsg(`✅ Desagregado: ${packs} paquete(s) → ${unitsTotal} und. (SKU unidad: ${unitCode})`, "ok");
+    ["rec-packs"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  } catch (e) {
+    _recSetMsg("❌ Error registrando desagregación. Reintenta.", "error");
+  }
+};
+
+let _scanSessId = "";
+let _scanSessUnsub = null;
+let _scanSessLastAt = 0;
+let _scanSessLastCode = "";
+const _scanSessKey = "scan_sess_active_v1";
+
+function _scanUiSet(text) {
+  const el = document.getElementById("scan-status-text");
+  if (el) el.textContent = text || "—";
+  const sid = document.getElementById("scan-sesion");
+  if (sid) sid.textContent = _scanSessId || "—";
+  const link = document.getElementById("scan-link");
+  if (link) {
+    if (_scanSessId) {
+      const u = `${window.location.origin}${window.location.pathname.replace(/index\.html?$/i, "")}scan.html?session=${_scanSessId}`;
+      link.textContent = u;
+      link.dataset.url = u;
+    } else {
+      link.textContent = "—";
+      link.dataset.url = "";
+    }
+  }
+}
+
+function _scanStopListener() {
+  try { if (_scanSessUnsub) _scanSessUnsub(); } catch {}
+  _scanSessUnsub = null;
+}
+
+function _scanLoadLastAt(sid) {
+  try {
+    const raw = localStorage.getItem(`scan_sess_lastat_${sid}`);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function _scanSaveLastAt(sid, at) {
+  try { localStorage.setItem(`scan_sess_lastat_${sid}`, String(at || 0)); } catch {}
+}
+
+async function _scanStartListener(sid) {
+  _scanStopListener();
+  _scanSessLastAt = _scanLoadLastAt(sid);
+  const ev = collection(db, "scan_sessions", sid, "events");
+  const qy = query(ev, where("clientAt", ">", _scanSessLastAt), orderBy("clientAt", "asc"), limit(60));
+  _scanSessUnsub = onSnapshot(qy, (snap) => {
+    const docs = snap.docs || [];
+    if (!docs.length) return;
+    for (const d of docs) {
+      const data = d.data() || {};
+      const code = String(data.code || "").trim();
+      const at = _toNum(data.clientAt);
+      if (!code) continue;
+      if (at && at > _scanSessLastAt) _scanSessLastAt = at;
+      if (code === _scanSessLastCode && (Date.now() - (at || 0)) < 1200) continue;
+      _scanSessLastCode = code;
+      _scanHandleIncoming(code);
+    }
+    _scanSaveLastAt(sid, _scanSessLastAt);
+  }, () => {
+    _scanUiSet("error conexión");
+  });
+  _scanUiSet(navigator.onLine ? "conectado" : "offline");
+}
+
+function _scanActiveTab() {
+  const tabs = ["tab-agregar", "tab-recepcion"];
+  for (const id of tabs) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains("active")) return id;
+  }
+  return "";
+}
+
+function _scanHandleIncoming(code) {
+  if (rolActual !== "admin") return;
+  const active = _scanActiveTab();
+  const ae = document.activeElement;
+  const focusId = ae && ae.id ? String(ae.id) : "";
+  const use = (id) => document.getElementById(id);
+
+  if (active === "tab-agregar") {
+    const input = use("codigo-barras");
+    if (input) { input.value = code; input.focus(); }
+    try { window.stockBuscarCodigo(code); } catch {}
+    _scanUiSet("recibido → agregar");
+    return;
+  }
+  if (active === "tab-recepcion") {
+    const m = use("rec-master");
+    const u = use("rec-unitcode");
+    if (focusId === "rec-unitcode" && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
+    if (focusId === "rec-master" && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
+    if (m && !String(m.value || "").trim()) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
+    if (u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
+  }
+  _scanUiSet("recibido");
+}
+
+window.scanAbrirLink = function() {
+  const link = document.getElementById("scan-link");
+  const url = link?.dataset?.url || "";
+  if (!url) return;
+  try { window.open(url, "_blank"); } catch {}
+};
+
+window.scanSesionCrear = async function() {
+  if (rolActual !== "admin") return;
+  const gen = () => String(Math.floor(100000 + Math.random() * 900000));
+  let sid = gen();
+  const { rol, nombre, user_id, usuario } = leerSesion();
+  try {
+    const ref = doc(db, "scan_sessions", sid);
+    await setDoc(ref, { status: "open", creadoEn: new Date(), actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" } }, { merge: true });
+  } catch {
+    sid = gen();
+    const ref = doc(db, "scan_sessions", sid);
+    await setDoc(ref, { status: "open", creadoEn: new Date() }, { merge: true });
+  }
+  _scanSessId = sid;
+  try { localStorage.setItem(_scanSessKey, sid); } catch {}
+  _scanUiSet("iniciando…");
+  await _scanStartListener(sid);
+  mostrarMensaje(`✅ Sesión creada: ${sid}`, "ok");
+};
+
+window.scanSesionCerrar = async function() {
+  if (rolActual !== "admin") return;
+  const sid = _scanSessId;
+  _scanStopListener();
+  _scanSessId = "";
+  try { localStorage.removeItem(_scanSessKey); } catch {}
+  _scanUiSet("inactivo");
+  if (sid) {
+    try { await updateDoc(doc(db, "scan_sessions", sid), { status: "closed", cerradoEn: new Date() }); } catch {}
+  }
+  mostrarMensaje("🛑 Sesión cerrada", "warning");
+};
 
 window.stockBuscarCodigo = function(arg) {
   const input = document.getElementById("codigo-barras");
