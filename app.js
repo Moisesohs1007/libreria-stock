@@ -420,10 +420,6 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
-  } else if (tabId === "tab-recepcion") {
-    const el = document.getElementById("rec-master");
-    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
-    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -464,10 +460,6 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   if (seccion) seccion.textContent = titulo;
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
-    if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
-    else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
-  } else if (tabId === "tab-recepcion") {
-    const el = document.getElementById("rec-master");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
@@ -1119,11 +1111,8 @@ async function _scanStartListener(sid) {
 }
 
 function _scanActiveTab() {
-  const tabs = ["tab-agregar", "tab-recepcion"];
-  for (const id of tabs) {
-    const el = document.getElementById(id);
-    if (el && el.classList.contains("active")) return id;
-  }
+  const el = document.getElementById("tab-agregar");
+  if (el && el.classList.contains("active")) return "tab-agregar";
   return "";
 }
 
@@ -1135,19 +1124,20 @@ function _scanHandleIncoming(code) {
   const use = (id) => document.getElementById(id);
 
   if (active === "tab-agregar") {
+    const m = use("rec-master");
+    const u = use("rec-unitcode");
+    const isRec = focusId.startsWith("rec-");
+    const masterEmpty = m && !String(m.value || "").trim();
+    if (focusId === "rec-unitcode" && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
+    if (focusId === "rec-master" && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
+    if (isRec && masterEmpty && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
+    if (isRec && !masterEmpty && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
+    if (masterEmpty && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
     const input = use("codigo-barras");
     if (input) { input.value = code; input.focus(); }
     try { window.stockBuscarCodigo(code); } catch {}
     _scanUiSet("recibido → agregar");
     return;
-  }
-  if (active === "tab-recepcion") {
-    const m = use("rec-master");
-    const u = use("rec-unitcode");
-    if (focusId === "rec-unitcode" && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
-    if (focusId === "rec-master" && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
-    if (m && !String(m.value || "").trim()) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
-    if (u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
   }
   _scanUiSet("recibido");
 }

@@ -287,7 +287,6 @@
         <!-- INVENTARIO -->
         <div class="sb-group-title">Inventario</div>
         <button class="sidebar-btn"        id="sb-inventario" onclick="cambiarTabSidebar('tab-inventario','sb-inventario','Inventario TP')">  Inventario TP</button>
-        <button class="sidebar-btn"        id="sb-recepcion"  onclick="cambiarTabSidebar('tab-recepcion','sb-recepcion','Recepción')">  Recepción</button>
         <button class="sidebar-btn"        id="sb-agregar"    onclick="cambiarTabSidebar('tab-agregar','sb-agregar','Agregar producto')">  Agregar producto</button>
         <button class="sidebar-btn"        id="sb-historial"  onclick="cambiarTabSidebar('tab-historial','sb-historial','Historial')">  Historial</button>
 
@@ -336,7 +335,6 @@
         <button class="dt-group-btn" onclick="toggleDtGroup('dtg-inventario')">Inventario -</button>
         <div class="dt-dropdown">
           <button class="dt-drop-item" id="dt-inventario" onclick="selDt('tab-inventario','dt-inventario','Inventario TP','dtg-inventario')">Inventario TP</button>
-          <button class="dt-drop-item" id="dt-recepcion"  onclick="selDt('tab-recepcion','dt-recepcion','Recepción','dtg-inventario')">Recepción</button>
           <button class="dt-drop-item" id="dt-agregar"    onclick="selDt('tab-agregar','dt-agregar','Agregar producto','dtg-inventario')">Agregar producto</button>
           <button class="dt-drop-item" id="dt-historial"  onclick="selDt('tab-historial','dt-historial','Historial','dtg-inventario')">Historial</button>
         </div>
@@ -408,11 +406,11 @@
       </div>
     </div>
 
-    <!-- TAB RECEPCIÓN -->
-    <div id="tab-recepcion" class="tab-panel">
+    <!-- TAB AGREGAR -->
+    <div id="tab-agregar" class="tab-panel">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="card">
-          <div class="card-title">Recepción de mercancía (paquetes → unidades)</div>
+          <div class="card-title">Recepción (paquetes → unidades)</div>
           <div class="mb-3">
             <label class="input-label">Código maestro del paquete (EAN/UPC) *</label>
             <div style="display:flex;gap:8px;align-items:center;">
@@ -450,9 +448,9 @@
         </div>
 
         <div class="card">
-          <div class="card-title">Sesión de escaneo multi-dispositivo</div>
+          <div class="card-title">Escaneo desde celular (tiempo real)</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;margin-bottom:12px;line-height:1.6;">
-            Abre una sesión en tu PC y escanea desde tu celular con cámara. Los códigos llegan en tiempo real.
+            Crea una sesión en tu PC y escanea desde tu celular con cámara. Los códigos llegan en tiempo real.
           </div>
           <div class="grid grid-cols-2 gap-3 mb-3">
             <button onclick="scanSesionCrear()" class="btn btn-primary" style="justify-content:center;">Crear sesión</button>
@@ -467,16 +465,7 @@
           <div id="scan-estado" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:10px;border:2px solid var(--border);border-radius:12px;background:var(--paper);">
             Estado: <span id="scan-status-text">inactivo</span>
           </div>
-          <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#777;line-height:1.5;">
-            Tip: abre “Agregar producto” o “Recepción” y los escaneos entrantes rellenarán el campo de código automáticamente.
-          </div>
         </div>
-      </div>
-    </div>
-
-    <!-- TAB AGREGAR -->
-    <div id="tab-agregar" class="tab-panel">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Manual -->
         <div class="card">
           <div class="card-title">o️ Agregar manual</div>

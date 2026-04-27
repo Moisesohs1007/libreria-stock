@@ -311,6 +311,14 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
   box-shadow:var(--shadow-lg);
   z-index:9999;
 }
+.dt-dropdown::before{
+  content:"";
+  position:absolute;
+  top:-10px;
+  left:0;
+  right:0;
+  height:10px;
+}
 .dt-group:hover .dt-dropdown, .dt-group.open .dt-dropdown{display:block;}
 .dt-drop-item{
   width:100%;
