@@ -74,10 +74,29 @@ function _fmtS(n) {
 
 function _parseDateOnly(v) {
   if (!v) return null;
-  const d = new Date(v);
+  const s = String(v || "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const da = parseInt(m[3], 10);
+    const d = new Date(y, mo, da, 0, 0, 0, 0);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+  const d = new Date(s);
   if (!Number.isFinite(d.getTime())) return null;
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function _dateToYmd(d) {
+  const x = d instanceof Date ? d : new Date(d);
+  if (!Number.isFinite(x.getTime())) return "";
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const da = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${da}`;
 }
 
 function _endOfDay(d) {
@@ -1265,12 +1284,26 @@ window.scanSesionUnir = async function() {
   if (rolActual !== "admin") return;
   const el = document.getElementById("scan-join");
   const sid = String(el?.value || "").trim();
-  if (!/^\d{6}$/.test(sid)) return mostrarMensaje("⚠️ Sesión inválida (6 dígitos)", "warning");
+  if (!/^[A-Z0-9_-]{3,32}$/i.test(sid)) return mostrarMensaje("⚠️ Sesión inválida", "warning");
   _scanSessId = sid;
   try { localStorage.setItem(_scanSessKey, sid); } catch {}
   _scanUiSet("conectando…");
   await _scanStartListener(sid);
   mostrarMensaje(`✅ Conectado a sesión: ${sid}`, "ok");
+};
+
+window.scanCopiarLink = async function() {
+  const link = document.getElementById("scan-link");
+  const url = String(link?.dataset?.url || "").trim();
+  if (!url) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      mostrarMensaje("✅ Link copiado", "ok");
+      return;
+    }
+  } catch {}
+  try { prompt("Copia este link:", url); } catch {}
 };
 
 window.scanSesionCerrar = async function() {
@@ -2094,8 +2127,14 @@ window.filtrarHistorial = function() {
   const desde=document.getElementById("filtro-desde").value;
   const hasta=document.getElementById("filtro-hasta").value;
   let f=todasLasVentas;
-  if(desde){const d=new Date(desde);d.setHours(0,0,0,0);f=f.filter(v=>{const t=v.fecha?.toDate?v.fecha.toDate():new Date(v.fecha);return t>=d;});}
-  if(hasta){const h=new Date(hasta);h.setHours(23,59,59,999);f=f.filter(v=>{const t=v.fecha?.toDate?v.fecha.toDate():new Date(v.fecha);return t<=h;});}
+  if (desde) {
+    const d = _parseDateOnly(desde);
+    if (d) f = f.filter(v => { const t = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha); return t >= d; });
+  }
+  if (hasta) {
+    const h = _endOfDay(_parseDateOnly(hasta));
+    if (h) f = f.filter(v => { const t = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha); return t <= h; });
+  }
   renderizarHistorial(f);
 };
 
@@ -4071,7 +4110,13 @@ function _ventaLineNet(v) {
   const desc = _toNum(v?.descuento_monto);
   const imp = _toNum(v?.impuesto_monto);
   const net = base - desc + imp;
-  const costo = (_toNum(v?.costo_unitario) || 0) * cant;
+  let costoUnit = _toNum(v?.costo_unitario) || 0;
+  if (!costoUnit) {
+    const code = sanitizeScanCode(v?.codigo || "");
+    const p = (code && _productoIndex?.get?.(code)) || (todosLosProductos || []).find(x => sanitizeScanCode(x?.codigo || "") === code) || null;
+    costoUnit = _precioCompra(p);
+  }
+  const costo = (Number.isFinite(costoUnit) ? costoUnit : 0) * cant;
   return { cant, unit, base, desc, imp, net, costo };
 }
 
@@ -4167,8 +4212,8 @@ function _movRangeFromUi() {
       to = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59, 999);
     }
   }
-  if (inpDesde) inpDesde.value = from.toISOString().slice(0, 10);
-  if (inpHasta) inpHasta.value = to.toISOString().slice(0, 10);
+  if (inpDesde) inpDesde.value = _dateToYmd(from);
+  if (inpHasta) inpHasta.value = _dateToYmd(to);
   const doCompare = !!document.getElementById("movf-compare")?.checked;
   let prev = null;
   if (doCompare) {
@@ -4212,7 +4257,7 @@ function _renderMovTabla(rows) {
     const imp = _fmtS(m.impuesto_monto);
     const des = _fmtS(m.descuento_monto);
     return `<tr>
-      <td class="mono">${d.toISOString().slice(0, 10)}</td>
+      <td class="mono">${_dateToYmd(d)}</td>
       <td>${tipo}</td>
       <td>${cat}</td>
       <td>${cuenta}</td>
@@ -4247,6 +4292,11 @@ function _renderMovEerr(cur, prev) {
 }
 
 window._finRenderAll = function() {
+  try {
+    const n = new Date();
+    const mf = document.getElementById("mov-fecha");
+    if (mf && !String(mf.value || "").trim()) mf.value = _dateToYmd(n);
+  } catch {}
   try {
     const prodCats = _uniqSorted((todosLosProductos || []).map(p => p.categoria || ""));
     const prodProvs = _uniqSorted((todosLosProductos || []).map(p => p.proveedor || ""));
@@ -4399,7 +4449,8 @@ window.movGuardar = async function() {
     if (file) comp = await _uploadComprobante(file, movRef.id);
     if (comp) await updateDoc(doc(db, "fin_movimientos", movRef.id), { comprobante: comp, actualizadoEn: new Date() });
     await _auditLog("create", "fin_movimientos", movRef.id, null, { ...base, comprobante: comp });
-    ["mov-monto","mov-cuenta","mov-impuesto","mov-descuento","mov-desc","mov-doc","mov-fecha"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    ["mov-monto","mov-cuenta","mov-impuesto","mov-descuento","mov-desc","mov-doc"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    const mf = document.getElementById("mov-fecha"); if (mf) mf.value = _dateToYmd(new Date());
     const fi = document.getElementById("mov-doc-file"); if (fi) fi.value = "";
     mostrarMensaje("✅ Movimiento guardado", "ok");
     await window.movActualizar();
@@ -4493,8 +4544,8 @@ window.gananciasCalcular = async function() {
   if (!f.desde || !f.hasta) {
     const n = new Date();
     const d = new Date(n.getFullYear(), n.getMonth(), 1);
-    document.getElementById("gan-desde").value = d.toISOString().slice(0, 10);
-    document.getElementById("gan-hasta").value = n.toISOString().slice(0, 10);
+    document.getElementById("gan-desde").value = _dateToYmd(d);
+    document.getElementById("gan-hasta").value = _dateToYmd(n);
     f.desde = _parseDateOnly(document.getElementById("gan-desde").value);
     f.hasta = _endOfDay(_parseDateOnly(document.getElementById("gan-hasta").value));
   }
