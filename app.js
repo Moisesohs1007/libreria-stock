@@ -1220,7 +1220,7 @@ function _scanUiSet(text) {
             alt.style.display = "block";
             alt.style.width = "128px";
             alt.style.height = "128px";
-            alt.src = `https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(url)}`;
+            alt.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(url)}`;
             box.appendChild(alt);
             return true;
           }
@@ -1328,6 +1328,13 @@ window.scanAbrirLink = function() {
   const url = link?.dataset?.url || "";
   if (!url) return;
   try { window.open(url, "_blank"); } catch {}
+};
+
+window.scanQrRefresh = function() {
+  try {
+    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
+    _scanUiSet(st);
+  } catch {}
 };
 
 window.scanSesionCrear = async function() {

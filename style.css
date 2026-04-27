@@ -116,6 +116,11 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
   .only-mobile{display:inline-flex !important;}
 }
 
+.only-desktop{display:none !important;}
+@media (min-width: 981px){
+  .only-desktop{display:flex !important;}
+}
+
 /* TABS */
 .tab-nav{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:16px;overflow-x:auto;padding-bottom:6px;}
 .tab-btn{
