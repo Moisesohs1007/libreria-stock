@@ -70,6 +70,29 @@ function _timeoutSignal(ms) {
   return c.signal;
 }
 
+function _isScanMode() {
+  try {
+    const u = new URL(window.location.href);
+    return String(u.searchParams.get("scan") || "") === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function _initScanMode() {
+  try {
+    const login = document.getElementById("login-screen");
+    const adm = document.getElementById("admin-screen");
+    const ven = document.getElementById("vendedor-screen");
+    const sm = document.getElementById("scan-mobile-screen");
+    if (login) login.style.display = "none";
+    if (adm) adm.style.display = "none";
+    if (ven) ven.style.display = "none";
+    if (sm) sm.style.display = "block";
+  } catch {}
+  try { await import(`./scan.js?v=20260427s`); } catch {}
+}
+
 function scanServiceBase() {
   const override = localStorage.getItem("scan_svc_base");
   if (override) return override;
@@ -505,6 +528,7 @@ window.addEventListener("online", () => { try { _offlineFlush(true); } catch {} 
 setInterval(() => { try { _offlineFlush(false); } catch {} }, 8000);
 
 (function() {
+  if (_isScanMode()) { _initScanMode(); return; }
   const { rol, nombre } = leerSesion();
   if (rol === "admin") { activarAdmin(); }
   else if (rol === "vendedor" && nombre) { activarVendedor(nombre); }
@@ -1196,13 +1220,14 @@ function _scanUiSet(text) {
         const ver = "20260427s";
         const sid = encodeURIComponent(String(_scanSessId || "").trim());
         const basePath = window.location.pathname.replace(/index\.html?$/i, "");
-        const localUrl = `${window.location.origin}${basePath}scan.html?v=${ver}&session=${sid}`;
+        const localRoot = `${window.location.origin}${basePath}`;
+        const localUrl = `${localRoot}?scan=1&v=${ver}&session=${sid}`;
         if (window.location.protocol === "https:") return localUrl;
         if (String(window.location.hostname || "").includes("github.io")) return localUrl;
         const cfg = String(localStorage.getItem("scan_mobile_base") || "").trim();
         const gh = cfg || "https://moisesohs1007.github.io/libreria-stock/";
         const root = gh.endsWith("/") ? gh : (gh + "/");
-        return `${root}scan.html?v=${ver}&session=${sid}`;
+        return `${root}?scan=1&v=${ver}&session=${sid}`;
       })();
       link.textContent = u;
       link.dataset.url = u;
