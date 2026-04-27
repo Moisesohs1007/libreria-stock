@@ -7,10 +7,10 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db, storage } from './firebase-config.js?v=20260427b';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427b';
-import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427b';
-import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427b';
+import { db, storage } from './firebase-config.js?v=20260427c';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427c';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427c';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427c';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit
@@ -1199,6 +1199,46 @@ window.scanSesionCrear = async function() {
   mostrarMensaje(`✅ Sesión creada: ${sid}`, "ok");
 };
 
+function _scanSessGetId() {
+  try {
+    return _scanSessId || localStorage.getItem(_scanSessKey) || "";
+  } catch {
+    return _scanSessId || "";
+  }
+}
+
+async function _scanSessSend(code, source) {
+  const sid = String(_scanSessGetId() || "").trim();
+  if (!/^\d{6}$/.test(sid)) return false;
+  const c = sanitizeScanCode(code);
+  if (!c) return false;
+  try {
+    const { rol, nombre, user_id, usuario } = leerSesion();
+    await addDoc(collection(db, "scan_sessions", sid, "events"), {
+      code: c,
+      clientAt: Date.now(),
+      source: String(source || ""),
+      url: String(location.href || ""),
+      actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+window.scanSesionUnir = async function() {
+  if (rolActual !== "admin") return;
+  const el = document.getElementById("scan-join");
+  const sid = String(el?.value || "").trim();
+  if (!/^\d{6}$/.test(sid)) return mostrarMensaje("⚠️ Sesión inválida (6 dígitos)", "warning");
+  _scanSessId = sid;
+  try { localStorage.setItem(_scanSessKey, sid); } catch {}
+  _scanUiSet("conectando…");
+  await _scanStartListener(sid);
+  mostrarMensaje(`✅ Conectado a sesión: ${sid}`, "ok");
+};
+
 window.scanSesionCerrar = async function() {
   if (rolActual !== "admin") return;
   const sid = _scanSessId;
@@ -1210,6 +1250,126 @@ window.scanSesionCerrar = async function() {
     try { await updateDoc(doc(db, "scan_sessions", sid), { status: "closed", cerradoEn: new Date() }); } catch {}
   }
   mostrarMensaje("🛑 Sesión cerrada", "warning");
+};
+
+const _camScan = { stream: null, running: false, targetId: "codigo-barras", detector: null, last: "", lastAt: 0, busy: false };
+
+function _camEl(id) { return document.getElementById(id); }
+
+function _camSetStatus(text, type) {
+  const el = _camEl("cam-status");
+  if (!el) return;
+  if (!text) { el.style.display = "none"; el.textContent = ""; return; }
+  el.style.display = "block";
+  el.textContent = text;
+  el.style.borderColor = type === "error" ? "#ef4444" : (type === "ok" ? "#16a34a" : "var(--border)");
+  el.style.color = type === "error" ? "#991b1b" : (type === "ok" ? "#065f46" : "#444");
+  el.style.background = type === "error" ? "#fee2e2" : (type === "ok" ? "#d1fae5" : "var(--paper)");
+}
+
+function _camOpenModal(open) {
+  const modal = _camEl("cam-modal");
+  if (!modal) return;
+  if (open) modal.classList.add("active");
+  else modal.classList.remove("active");
+}
+
+function _camStopStream() {
+  try { _camScan.stream?.getTracks?.().forEach(t => { try { t.stop(); } catch {} }); } catch {}
+  _camScan.stream = null;
+  const v = _camEl("cam-video");
+  if (v) { try { v.srcObject = null; } catch {} }
+}
+
+function _camApplyToTarget(code) {
+  const id = String(_camScan.targetId || "codigo-barras");
+  const el = document.getElementById(id);
+  if (el) el.value = code;
+  if (id === "codigo-barras") {
+    try { window.stockBuscarCodigo(code); } catch {}
+    return;
+  }
+  if (id === "rec-master") {
+    try { window.recDetectar(); } catch {}
+    return;
+  }
+}
+
+async function _camEnsureDetector() {
+  if (_camScan.detector) return _camScan.detector;
+  if (typeof window.BarcodeDetector !== "function") return null;
+  try {
+    const formats = ["ean_13", "ean_8", "upc_a", "code_128", "qr_code"];
+    _camScan.detector = new window.BarcodeDetector({ formats });
+    return _camScan.detector;
+  } catch {
+    return null;
+  }
+}
+
+async function _camLoop() {
+  if (!_camScan.running) return;
+  if (_camScan.busy) return;
+  _camScan.busy = true;
+  try {
+    const det = await _camEnsureDetector();
+    const v = _camEl("cam-video");
+    if (!det || !v) {
+      _camSetStatus("Tu navegador no soporta BarcodeDetector. Usa Chrome (Android) o Safari reciente, o escanea con lector físico.", "warning");
+      return;
+    }
+    const hits = await det.detect(v);
+    if (Array.isArray(hits) && hits.length) {
+      const raw = String(hits[0]?.rawValue || "").trim();
+      const cleaned = sanitizeScanCode(raw);
+      const vb = validateBarcode(cleaned, { allowLib: true });
+      if (!vb.ok) {
+        _camSetStatus("Código no válido (EAN/UPC o LIB-). Intenta de nuevo.", "warning");
+      } else {
+        const code = vb.normalized;
+        if (_camScan.last === code && (Date.now() - _camScan.lastAt) < 1500) return;
+        _camScan.last = code;
+        _camScan.lastAt = Date.now();
+        _camSetStatus(`✅ Detectado: ${code}`, "ok");
+        _camApplyToTarget(code);
+        await _scanSessSend(code, "camera");
+        window.camScanStop();
+        return;
+      }
+    }
+  } catch {
+    _camSetStatus("No se pudo leer. Revisa permisos de cámara.", "error");
+  } finally {
+    _camScan.busy = false;
+    if (_camScan.running) setTimeout(_camLoop, 220);
+  }
+}
+
+window.camScanStart = async function(targetId) {
+  if (rolActual !== "admin") return;
+  if (targetId) _camScan.targetId = String(targetId);
+  _camSetStatus("Iniciando cámara…", "warning");
+  _camOpenModal(true);
+  try {
+    const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    _camScan.stream = media;
+    const v = _camEl("cam-video");
+    if (v) {
+      v.srcObject = media;
+      try { await v.play(); } catch {}
+    }
+    _camScan.running = true;
+    _camSetStatus("Apunta al código…", "warning");
+    setTimeout(_camLoop, 120);
+  } catch {
+    _camSetStatus("Permiso denegado o no hay cámara disponible.", "error");
+  }
+};
+
+window.camScanStop = function() {
+  _camScan.running = false;
+  _camStopStream();
+  _camOpenModal(false);
 };
 
 window.stockBuscarCodigo = function(arg) {

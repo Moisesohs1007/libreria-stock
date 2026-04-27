@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260427b">
+  <link rel="stylesheet" href="style.css?v=20260427c">
 </head>
 <body>
 <input id="scanner" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0;" autocomplete="off"/>
@@ -415,6 +415,7 @@
             <label class="input-label">Código maestro del paquete (EAN/UPC) *</label>
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="rec-master" class="input-field" placeholder="Escanea el paquete..." style="flex:1;" onkeydown="if(event.key==='Enter'){recDetectar();}">
+              <button onclick="camScanStart('rec-master')" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
               <button onclick="recDetectar()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Detectar</button>
             </div>
             <div id="rec-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
@@ -437,6 +438,7 @@
             <label class="input-label">Código unidad (opcional)</label>
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="rec-unitcode" class="input-field" placeholder="Si la unidad tiene código, escanéalo aquí..." style="flex:1;">
+              <button onclick="camScanStart('rec-unitcode')" class="btn" style="background:#eee;white-space:nowrap;">Cámara</button>
               <button onclick="recGenerarSku()" class="btn" style="background:#eee;white-space:nowrap;">Generar SKU</button>
             </div>
             <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
@@ -462,6 +464,10 @@
           <div class="mb-3" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#666;word-break:break-all;">
             Link móvil: <a href="#" id="scan-link" onclick="scanAbrirLink();return false;" style="text-decoration:underline;">—</a>
           </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <input id="scan-join" class="input-field" placeholder="Sesión (6 dígitos)">
+            <button onclick="scanSesionUnir()" class="btn" style="justify-content:center;background:#eee;">Conectar</button>
+          </div>
           <div id="scan-estado" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:10px;border:2px solid var(--border);border-radius:12px;background:var(--paper);">
             Estado: <span id="scan-status-text">inactivo</span>
           </div>
@@ -473,6 +479,7 @@
             <label class="input-label">Código de barras (EAN/UPC) o LIB- *</label>
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="codigo-barras" class="input-field" placeholder="Escanea aquí..." style="flex:1;" onkeydown="if(event.key==='Enter'){stockBuscarCodigo();}">
+              <button onclick="camScanStart('codigo-barras')" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
               <button onclick="stockBuscarCodigo()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Buscar</button>
               <button onclick="stockBuscarOnline()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Internet</button>
             </div>
@@ -1264,8 +1271,26 @@
   </div>
 </div>
 
+<!-- MODAL CÁMARA (ESCANEO) -->
+<div id="cam-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">Escanear con cámara</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#666;line-height:1.5;margin-bottom:10px;">
+      Apunta al código de barras. Se cerrará automáticamente cuando detecte un código válido.
+    </div>
+    <div style="border:2px solid var(--border);border-radius:14px;overflow:hidden;background:#000;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;">
+      <video id="cam-video" playsinline autoplay muted style="width:100%;height:100%;object-fit:cover;"></video>
+    </div>
+    <div id="cam-status" style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;display:none;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+      <button onclick="camScanStop()" class="btn" style="background:#eee;flex:1;">Cerrar</button>
+      <button onclick="camScanStart()" class="btn btn-primary" style="flex:1;">Reintentar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ETIQUETAS PARA IMPRIMIR -->
 <div id="etiquetas-print"></div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260427b'></script></body></html>
+<script type='module' src='app.js?v=20260427c'></script></body></html>
