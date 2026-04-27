@@ -7,10 +7,10 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db, storage } from './firebase-config.js?v=20260426b';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260426b';
-import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260426b';
-import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260426b';
+import { db, storage } from './firebase-config.js?v=20260427a';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427a';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427a';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427a';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
   increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit

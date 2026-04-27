@@ -1,5 +1,5 @@
-import { db } from "./firebase-config.js?v=20260426b";
-import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260426b";
+import { db } from "./firebase-config.js?v=20260427a";
+import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427a";
 import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
@@ -209,4 +209,3 @@ $("btnCam").addEventListener("click", () => {
 const preset = parseSessionFromUrl();
 if (preset) connect(preset);
 else setStatus(navigator.onLine ? "inactivo" : "offline");
-
