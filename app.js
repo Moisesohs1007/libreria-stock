@@ -8,7 +8,7 @@
  */
 
 import { db, storage } from './firebase-config.js?v=20260427f';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427f';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427k';
 import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427f';
 import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427f';
 import {

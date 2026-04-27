@@ -77,9 +77,24 @@ export function validateBarcode(raw, opts) {
   }
   const digits = normalizeBarcodeDigits(cleaned);
   if (!digits) return { ok: false, type: "", normalized: "", reason: "EMPTY" };
+  if (digits.length === 14 && digits.startsWith("0")) {
+    const e13 = digits.slice(1);
+    const ok13 = _checksumMod10(e13, 13) !== null;
+    if (ok13) return { ok: true, type: "EAN13", normalized: e13 };
+    const u12 = digits.slice(2);
+    const ok12 = _checksumMod10(u12, 12) !== null;
+    if (ok12) return { ok: true, type: "UPCA", normalized: u12 };
+    return { ok: false, type: "EAN13", normalized: e13, reason: "CHECKSUM" };
+  }
   if (digits.length === 13) {
     const ok = _checksumMod10(digits, 13) !== null;
-    return ok ? { ok: true, type: "EAN13", normalized: digits } : { ok: false, type: "EAN13", normalized: digits, reason: "CHECKSUM" };
+    if (ok) return { ok: true, type: "EAN13", normalized: digits };
+    if (digits.startsWith("0")) {
+      const u12 = digits.slice(1);
+      const ok12 = _checksumMod10(u12, 12) !== null;
+      if (ok12) return { ok: true, type: "UPCA", normalized: u12 };
+    }
+    return { ok: false, type: "EAN13", normalized: digits, reason: "CHECKSUM" };
   }
   if (digits.length === 12) {
     const ok = _checksumMod10(digits, 12) !== null;

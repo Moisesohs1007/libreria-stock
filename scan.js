@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js?v=20260427g";
-import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427g";
+import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427k";
 import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
