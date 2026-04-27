@@ -41,6 +41,27 @@ let todosLosMovimientos = [];
 let rolActual          = null; 
 let nombreVendedor     = "";
 let listenersIniciados = false;
+const _ADMIN_TAB_KEY = "admin_last_tab_v1";
+const _VENDEDOR_TAB_KEY = "vendedor_last_tab_v1";
+
+function _saveAdminTab(payload) {
+  try { localStorage.setItem(_ADMIN_TAB_KEY, JSON.stringify(payload || {})); } catch {}
+}
+function _loadAdminTab() {
+  try {
+    const raw = localStorage.getItem(_ADMIN_TAB_KEY);
+    const o = raw ? JSON.parse(raw) : null;
+    return (o && typeof o === "object") ? o : null;
+  } catch {
+    return null;
+  }
+}
+function _saveVendedorTab(tabId) {
+  try { localStorage.setItem(_VENDEDOR_TAB_KEY, String(tabId || "")); } catch {}
+}
+function _loadVendedorTab() {
+  try { return String(localStorage.getItem(_VENDEDOR_TAB_KEY) || ""); } catch { return ""; }
+}
 
 function _timeoutSignal(ms) {
   if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
@@ -423,6 +444,16 @@ function activarAdmin() {
     _scanUiSet("conectando…");
     setTimeout(() => { try { _scanStartListener(_scanSessId); } catch {} }, 350);
   } catch {}
+  setTimeout(() => {
+    try {
+      const s = _loadAdminTab();
+      if (s?.tabId && s?.btnId && s?.titulo && s?.groupId && typeof window.selDt === "function") {
+        window.selDt(s.tabId, s.btnId, s.titulo, s.groupId);
+      } else if (s?.tabId && s?.sbBtnId && s?.titulo && typeof window.cambiarTabSidebar === "function") {
+        window.cambiarTabSidebar(s.tabId, s.sbBtnId, s.titulo);
+      }
+    } catch {}
+  }, 120);
 }
 
 function activarVendedor(nombre) {
@@ -444,6 +475,16 @@ function activarVendedor(nombre) {
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
   try { _outsideDrainNow?.(); } catch {}
+  setTimeout(() => {
+    try {
+      const tab = _loadVendedorTab();
+      if (!tab) return;
+      const panel = document.getElementById(tab);
+      if (!panel) return;
+      const btn = document.querySelector(`#vendedor-screen .tab-btn[onclick*="'${tab}'"]`);
+      window.cambiarTabVendedor(tab, btn || null);
+    } catch {}
+  }, 120);
 }
 
 window.cerrarSesion = function() {
@@ -497,11 +538,16 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
   }
   const seccion = document.getElementById("seccion-activa");
   if (seccion) seccion.textContent = titulo;
+  if (rolActual === "admin") {
+    _saveAdminTab({ tabId, sbBtnId: btnId, titulo });
+  }
   cerrarSidebar();
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
+    setTimeout(() => { try { _scanUiSet(st); } catch {} }, 120);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -540,10 +586,15 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   
   const seccion = document.getElementById("seccion-activa");
   if (seccion) seccion.textContent = titulo;
+  if (rolActual === "admin") {
+    _saveAdminTab({ tabId, btnId, titulo, groupId });
+  }
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
+    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
+    setTimeout(() => { try { _scanUiSet(st); } catch {} }, 120);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -1161,7 +1212,18 @@ function _scanUiSet(text) {
         try {
           box.innerHTML = "";
           if (!url) { box.textContent = "—"; return true; }
-          if (typeof window.QRCode !== "function") { box.textContent = "Cargando…"; return false; }
+          if (typeof window.QRCode !== "function") {
+            const alt = document.createElement("img");
+            alt.alt = "QR";
+            alt.width = 128;
+            alt.height = 128;
+            alt.style.display = "block";
+            alt.style.width = "128px";
+            alt.style.height = "128px";
+            alt.src = `https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(url)}`;
+            box.appendChild(alt);
+            return true;
+          }
           new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
           return true;
         } catch {
@@ -3069,6 +3131,7 @@ window.cambiarTabVendedor = function(tabId, btn) {
   const panel = document.getElementById(tabId);
   if (panel) panel.classList.add("active");
   if (btn) btn.classList.add("active");
+  _saveVendedorTab(tabId);
 };
 
 window.vFiadaSeleccionar = function() { _fiadaSelect("v"); };
