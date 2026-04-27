@@ -1181,6 +1181,12 @@ const _scanSessKey = "scan_sess_active_v1";
 function _scanUiSet(text) {
   const el = document.getElementById("scan-status-text");
   if (el) el.textContent = text || "—";
+  try {
+    if (rolActual === "admin" && !_scanSessId) {
+      _scanSessId = "ADMIN";
+      try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
+    }
+  } catch {}
   const sid = document.getElementById("scan-sesion");
   if (sid) sid.textContent = _scanSessId || "—";
   const link = document.getElementById("scan-link");
@@ -1211,20 +1217,28 @@ function _scanUiSet(text) {
       const render = () => {
         try {
           box.innerHTML = "";
-          if (!url) { box.textContent = "—"; return true; }
-          if (typeof window.QRCode !== "function") {
-            const alt = document.createElement("img");
-            alt.alt = "QR";
-            alt.width = 128;
-            alt.height = 128;
-            alt.style.display = "block";
-            alt.style.width = "128px";
-            alt.style.height = "128px";
-            alt.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(url)}`;
-            box.appendChild(alt);
-            return true;
-          }
-          new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
+          if (!url) { box.textContent = "Sin link"; return true; }
+          try {
+            if (typeof window.QRCode === "function") {
+              new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
+              return true;
+            }
+          } catch {}
+          const img = document.createElement("img");
+          img.alt = "QR";
+          img.width = 128;
+          img.height = 128;
+          img.style.display = "block";
+          img.style.width = "128px";
+          img.style.height = "128px";
+          img.loading = "eager";
+          img.decoding = "async";
+          img.referrerPolicy = "no-referrer";
+          img.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(url)}`;
+          img.onerror = () => {
+            try { box.textContent = "No se pudo cargar QR"; } catch {}
+          };
+          box.appendChild(img);
           return true;
         } catch {
           box.textContent = "—";
