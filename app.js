@@ -438,12 +438,6 @@ function activarAdmin() {
   try { localStorage.setItem("outside_queue_enabled", "0"); } catch {}
   try { localStorage.setItem("bg_scanner_enabled", "0"); } catch {}
   try { _bgStopStream?.(); } catch {}
-  try {
-    _scanSessId = "ADMIN";
-    try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
-    _scanUiSet("conectando…");
-    setTimeout(() => { try { _scanStartListener(_scanSessId); } catch {} }, 350);
-  } catch {}
   setTimeout(() => {
     try {
       const s = _loadAdminTab();
@@ -546,8 +540,6 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
-    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
-    setTimeout(() => { try { _scanUiSet(st); } catch {} }, 120);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -593,8 +585,6 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
     else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
-    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
-    setTimeout(() => { try { _scanUiSet(st); } catch {} }, 120);
   } else if (scannerInput) setTimeout(() => scannerInput.focus(), 100);
   if (window._impOnTab) window._impOnTab(tabId);
   if (rolActual === "admin") {
@@ -1172,343 +1162,6 @@ window.recConfirmar = async function() {
   }
 };
 
-let _scanSessId = "";
-let _scanSessUnsub = null;
-let _scanSessLastAt = 0;
-let _scanSessLastCode = "";
-const _scanSessKey = "scan_sess_active_v1";
-const _scanPcIdKey = "scan_pc_id_v1";
-const _scanTargetPcKey = "scan_target_pc_v1";
-
-let _scanPcId = "";
-let _scanTargetPcId = "";
-
-function _scanGetOrCreatePcId() {
-  try {
-    let id = String(localStorage.getItem(_scanPcIdKey) || "").trim();
-    if (!id) {
-      id = Math.random().toString(36).slice(2, 10).toUpperCase();
-      localStorage.setItem(_scanPcIdKey, id);
-    }
-    return id;
-  } catch {
-    return "";
-  }
-}
-
-function _scanLoadTargetPc() {
-  try { return String(localStorage.getItem(_scanTargetPcKey) || "").trim(); } catch { return ""; }
-}
-
-function _scanSaveTargetPc(pc) {
-  try {
-    const v = String(pc || "").trim();
-    if (v) localStorage.setItem(_scanTargetPcKey, v);
-    else localStorage.removeItem(_scanTargetPcKey);
-  } catch {}
-}
-
-function _scanMakePairText(sid, pc) {
-  const S = String(sid || "").trim().toUpperCase();
-  const P = String(pc || "").trim().toUpperCase();
-  if (!S || !P) return "";
-  return `LVP|SCAN|SID=${S}|PC=${P}`;
-}
-
-function _scanParsePairText(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return null;
-  try {
-    const up = s.toUpperCase();
-    if (up.startsWith("LVP|SCAN|")) {
-      const parts = up.split("|").slice(2);
-      let sid = "";
-      let pc = "";
-      for (const p of parts) {
-        const i = p.indexOf("=");
-        if (i <= 0) continue;
-        const k = p.slice(0, i).trim();
-        const v = p.slice(i + 1).trim();
-        if (k === "SID") sid = v;
-        if (k === "PC") pc = v;
-      }
-      if (sid && pc) return { sid, pc };
-    }
-  } catch {}
-  try {
-    if (/^https?:\/\//i.test(s)) {
-      const u = new URL(s);
-      const sid = String(u.searchParams.get("session") || "").trim().toUpperCase();
-      const pc = String(u.searchParams.get("pc") || "").trim().toUpperCase();
-      if (sid && pc) return { sid, pc };
-    }
-  } catch {}
-  return null;
-}
-
-function _scanUiSet(text) {
-  const el = document.getElementById("scan-status-text");
-  if (el) el.textContent = text || "—";
-  try {
-    if (rolActual === "admin" && !_scanSessId) {
-      _scanSessId = "ADMIN";
-      try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
-    }
-  } catch {}
-  try {
-    if (!_scanPcId) _scanPcId = _scanGetOrCreatePcId();
-    if (!_scanTargetPcId) _scanTargetPcId = _scanLoadTargetPc();
-  } catch {}
-  const sid = document.getElementById("scan-sesion");
-  if (sid) sid.textContent = _scanSessId || "—";
-  const link = document.getElementById("scan-link");
-  if (link) {
-    if (_scanSessId) {
-      const pair = _scanMakePairText(_scanSessId, _scanPcId);
-      link.textContent = _scanPcId ? `PC: ${_scanPcId}` : "—";
-      link.dataset.pair = pair || "";
-    } else {
-      link.textContent = "—";
-      link.dataset.pair = "";
-    }
-  }
-  try {
-    const box = document.getElementById("scan-qr");
-    const pair = String(document.getElementById("scan-link")?.dataset?.pair || "").trim();
-    if (box) {
-      const render = () => {
-        try {
-          box.innerHTML = "";
-          if (!pair) { box.textContent = "Sin QR"; return true; }
-          try {
-            if (typeof window.QRCode === "function") {
-              new window.QRCode(box, { text: pair, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
-              return true;
-            }
-          } catch {}
-          const img = document.createElement("img");
-          img.alt = "QR";
-          img.width = 128;
-          img.height = 128;
-          img.style.display = "block";
-          img.style.width = "128px";
-          img.style.height = "128px";
-          img.loading = "eager";
-          img.decoding = "async";
-          img.referrerPolicy = "no-referrer";
-          img.src = `https://chart.googleapis.com/chart?cht=qr&chs=128x128&chl=${encodeURIComponent(pair)}`;
-          img.onerror = () => {
-            try { box.textContent = "No se pudo cargar QR"; } catch {}
-          };
-          box.appendChild(img);
-          return true;
-        } catch {
-          box.textContent = "—";
-          return true;
-        }
-      };
-      if (!render()) {
-        setTimeout(() => { try { if (!render()) setTimeout(() => { try { render(); } catch {} }, 900); } catch {} }, 300);
-      }
-    }
-  } catch {}
-}
-
-function _scanStopListener() {
-  try { if (_scanSessUnsub) _scanSessUnsub(); } catch {}
-  _scanSessUnsub = null;
-}
-
-function _scanLoadLastAt(sid) {
-  try {
-    const raw = localStorage.getItem(`scan_sess_lastat_${sid}`);
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function _scanSaveLastAt(sid, at) {
-  try { localStorage.setItem(`scan_sess_lastat_${sid}`, String(at || 0)); } catch {}
-}
-
-async function _scanStartListener(sid) {
-  _scanStopListener();
-  _scanSessLastAt = _scanLoadLastAt(sid);
-  if (_scanSessLastAt > (Date.now() + 60000)) _scanSessLastAt = 0;
-  const ev = collection(db, "scan_sessions", sid, "events");
-  const lastTs = Timestamp.fromMillis(_toNum(_scanSessLastAt));
-  const qy = query(ev, where("at", ">", lastTs), orderBy("at", "asc"), limit(60));
-  _scanSessUnsub = onSnapshot(qy, (snap) => {
-    const docs = snap.docs || [];
-    if (!docs.length) return;
-    for (const d of docs) {
-      const data = d.data() || {};
-      const code = String(data.code || "").trim();
-      const at = _toNum(data.at?.toMillis?.() || data.clientAt);
-      const pc = String(data.pc || "").trim().toUpperCase();
-      if (!code) continue;
-      if (_scanPcId) {
-        if (!pc) continue;
-        if (pc !== String(_scanPcId || "").trim().toUpperCase()) continue;
-      }
-      if (at && at > _scanSessLastAt) _scanSessLastAt = at;
-      if (code === _scanSessLastCode && (Date.now() - (at || 0)) < 1200) continue;
-      _scanSessLastCode = code;
-      _scanHandleIncoming(code);
-    }
-    _scanSaveLastAt(sid, _scanSessLastAt);
-  }, () => {
-    _scanUiSet("error conexión");
-  });
-  _scanUiSet(navigator.onLine ? "conectado" : "offline");
-}
-
-function _scanActiveTab() {
-  const el = document.getElementById("tab-agregar");
-  if (el && el.classList.contains("active")) return "tab-agregar";
-  return "";
-}
-
-function _scanHandleIncoming(code) {
-  if (rolActual !== "admin") return;
-  const active = _scanActiveTab();
-  try {
-    const inputAny = document.getElementById("codigo-barras");
-    if (inputAny && String(active || "") !== "tab-agregar") {
-      inputAny.value = code;
-      _scanUiSet("recibido (ve a Registrar producto)");
-    }
-  } catch {}
-  const ae = document.activeElement;
-  const focusId = ae && ae.id ? String(ae.id) : "";
-  const use = (id) => document.getElementById(id);
-
-  if (active === "tab-agregar") {
-    const m = use("rec-master");
-    const u = use("rec-unitcode");
-    const isRec = focusId.startsWith("rec-");
-    const masterEmpty = m && !String(m.value || "").trim();
-    if (focusId === "rec-unitcode" && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
-    if (focusId === "rec-master" && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
-    if (isRec && masterEmpty && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
-    if (isRec && !masterEmpty && u) { u.value = code; u.focus(); _scanUiSet("recibido → unidad"); return; }
-    if (masterEmpty && m) { m.value = code; m.focus(); try { window.recDetectar(); } catch {} _scanUiSet("recibido → maestro"); return; }
-    const input = use("codigo-barras");
-    if (input) { input.value = code; input.focus(); }
-    try { window.stockBuscarCodigo(code); } catch {}
-    _scanUiSet("recibido → agregar");
-    return;
-  }
-  _scanUiSet("recibido");
-}
-
-window.scanAbrirLink = function() {
-  const link = document.getElementById("scan-link");
-  const url = link?.dataset?.url || "";
-  if (!url) return;
-  try { window.open(url, "_blank"); } catch {}
-};
-
-window.scanQrRefresh = function() {
-  try {
-    const st = document.getElementById("scan-status-text")?.textContent || "conectado";
-    _scanUiSet(st);
-  } catch {}
-};
-
-window.scanSesionCrear = async function() {
-  if (rolActual !== "admin") return;
-  const gen = () => String(Math.floor(100000 + Math.random() * 900000));
-  let sid = gen();
-  const { rol, nombre, user_id, usuario } = leerSesion();
-  try {
-    const ref = doc(db, "scan_sessions", sid);
-    await setDoc(ref, { status: "open", creadoEn: new Date(), actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" } }, { merge: true });
-  } catch {
-    sid = gen();
-    const ref = doc(db, "scan_sessions", sid);
-    await setDoc(ref, { status: "open", creadoEn: new Date() }, { merge: true });
-  }
-  _scanSessId = sid;
-  try { localStorage.setItem(_scanSessKey, sid); } catch {}
-  _scanUiSet("iniciando…");
-  await _scanStartListener(sid);
-  mostrarMensaje(`✅ Sesión creada: ${sid}`, "ok");
-};
-
-function _scanSessGetId() {
-  try {
-    return _scanSessId || localStorage.getItem(_scanSessKey) || "";
-  } catch {
-    return _scanSessId || "";
-  }
-}
-
-async function _scanSessSend(code, source, meta) {
-  const sid = String(_scanSessGetId() || "").trim();
-  if (!sid) return false;
-  if (!/^[A-Z0-9_-]{3,32}$/i.test(sid)) return false;
-  const c = sanitizeScanCode(code);
-  if (!c) return false;
-  const pc = String(meta?.pc || "").trim().toUpperCase();
-  try {
-    const { rol, nombre, user_id, usuario } = leerSesion();
-    await addDoc(collection(db, "scan_sessions", sid, "events"), {
-      code: c,
-      pc,
-      at: serverTimestamp(),
-      clientAt: Date.now(),
-      source: String(source || ""),
-      url: String(location.href || ""),
-      actor: { rol: rol || "", nombre: nombre || "", user_id: user_id || "", usuario: usuario || "" }
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-window.scanSesionUnir = async function() {
-  if (rolActual !== "admin") return;
-  const el = document.getElementById("scan-join");
-  const sid = String(el?.value || "").trim();
-  if (!/^[A-Z0-9_-]{3,32}$/i.test(sid)) return mostrarMensaje("⚠️ Sesión inválida", "warning");
-  _scanSessId = sid;
-  try { localStorage.setItem(_scanSessKey, sid); } catch {}
-  _scanUiSet("conectando…");
-  await _scanStartListener(sid);
-  mostrarMensaje(`✅ Conectado a sesión: ${sid}`, "ok");
-};
-
-window.scanCopiarLink = async function() {
-  const link = document.getElementById("scan-link");
-  const url = String(link?.dataset?.url || "").trim();
-  if (!url) return;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(url);
-      mostrarMensaje("✅ Link copiado", "ok");
-      return;
-    }
-  } catch {}
-  try { prompt("Copia este link:", url); } catch {}
-};
-
-window.scanSesionCerrar = async function() {
-  if (rolActual !== "admin") return;
-  const sid = _scanSessId;
-  _scanStopListener();
-  _scanSessId = "";
-  try { localStorage.removeItem(_scanSessKey); } catch {}
-  _scanUiSet("inactivo");
-  if (sid) {
-    try { await updateDoc(doc(db, "scan_sessions", sid), { status: "closed", cerradoEn: new Date() }); } catch {}
-  }
-  mostrarMensaje("🛑 Sesión cerrada", "warning");
-};
-
 const _camScan = { stream: null, running: false, targetId: "codigo-barras", detector: null, last: "", lastAt: 0, busy: false };
 
 function _camEl(id) { return document.getElementById(id); }
@@ -1578,27 +1231,6 @@ async function _camLoop() {
     const hits = await det.detect(v);
     if (Array.isArray(hits) && hits.length) {
       const raw = String(hits[0]?.rawValue || "").trim();
-      const syncOn = !!document.getElementById("sync-with-pc")?.checked;
-      const pair = _scanParsePairText(raw);
-      if (pair) {
-        if (!syncOn) {
-          _camSetStatus("Activa “Sincronizar con PC (usar QR)” para enlazar.", "warning");
-          return;
-        }
-        if (rolActual !== "admin") {
-          _camSetStatus("Solo Admin puede sincronizar con PC.", "warning");
-          return;
-        }
-        _scanPcId = _scanPcId || _scanGetOrCreatePcId();
-        _scanSessId = String(pair.sid || "").trim().toUpperCase();
-        _scanTargetPcId = String(pair.pc || "").trim().toUpperCase();
-        _scanSaveTargetPc(_scanTargetPcId);
-        try { localStorage.setItem(_scanSessKey, _scanSessId); } catch {}
-        _scanUiSet("conectado");
-        _camSetStatus("✅ PC enlazada. Ahora escanea productos.", "ok");
-        window.camScanStop();
-        return;
-      }
       const cleaned = sanitizeScanCode(raw);
       const vb = validateBarcode(cleaned, { allowLib: true });
       if (!vb.ok) {
@@ -1609,16 +1241,7 @@ async function _camLoop() {
         _camScan.last = code;
         _camScan.lastAt = Date.now();
         _camSetStatus(`✅ Detectado: ${code}`, "ok");
-        if (syncOn) {
-          const targetPc = String(_scanTargetPcId || _scanLoadTargetPc() || "").trim().toUpperCase();
-          if (!targetPc) {
-            _camSetStatus("Primero escanea el QR de la PC para sincronizar.", "warning");
-            return;
-          }
-          await _scanSessSend(code, "camera", { pc: targetPc });
-        }
-        const isMobile = (() => { try { return window.matchMedia && window.matchMedia("(max-width: 980px)").matches; } catch { return false; } })();
-        if (!(syncOn && isMobile)) _camApplyToTarget(code);
+        _camApplyToTarget(code);
         window.camScanStop();
         return;
       }
@@ -1651,14 +1274,7 @@ window.camScanStart = async function(targetId) {
       try { await v.play(); } catch {}
     }
     _camScan.running = true;
-    try {
-      const syncOn = !!document.getElementById("sync-with-pc")?.checked;
-      const targetPc = String(_scanTargetPcId || _scanLoadTargetPc() || "").trim();
-      if (syncOn && !targetPc) _camSetStatus("Primero apunta al QR de la PC para sincronizar…", "warning");
-      else _camSetStatus("Apunta al código…", "warning");
-    } catch {
-      _camSetStatus("Apunta al código…", "warning");
-    }
+    _camSetStatus("Apunta al código…", "warning");
     setTimeout(_camLoop, 120);
   } catch {
     _camSetStatus("Permiso denegado o no hay cámara disponible.", "error");
