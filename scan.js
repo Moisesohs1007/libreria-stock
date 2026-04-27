@@ -1,4 +1,4 @@
-import { db } from "./firebase-config.js?v=20260427g";
+import { db } from "./firebase-config.js?v=20260427r";
 import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427k";
 import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -23,11 +23,36 @@ const state = {
   detector: null,
   lastSent: { code: "", at: 0 },
   queueKey: "scan_mobile_queue_v1",
+  localKey: "scan_local_codes_v1",
+  syncEnabled: true,
 };
 
 function setStatus(txt) {
   const el = $("st");
   if (el) el.textContent = txt;
+}
+
+function _loadLocal() {
+  try {
+    const raw = localStorage.getItem(state.localKey);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function _saveLocal(arr) {
+  try { localStorage.setItem(state.localKey, JSON.stringify(arr || [])); } catch {}
+  const el = $("localCount");
+  if (el) el.textContent = String((arr || []).length);
+}
+
+function _localAdd(code) {
+  const arr = _loadLocal();
+  arr.push({ code: String(code || ""), at: Date.now() });
+  while (arr.length > 500) arr.shift();
+  _saveLocal(arr);
 }
 
 function setSession(code) {
@@ -62,6 +87,12 @@ async function pushEvent(code) {
 
   const lastEl = $("last");
   if (lastEl) lastEl.textContent = normalized;
+
+  if (!state.syncEnabled) {
+    _localAdd(normalized);
+    setStatus("guardado (solo celular)");
+    return;
+  }
 
   if (!state.session) {
     const q = _loadQueue();
@@ -115,10 +146,31 @@ function parseSessionFromUrl() {
   return "";
 }
 
+function _extractSession(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s);
+      const p = String(u.searchParams.get("session") || "").trim();
+      if (p) return p;
+    }
+  } catch {}
+  const m = s.match(/[?&]session=([A-Z0-9_-]{3,32})/i);
+  if (m && m[1]) return String(m[1] || "").trim();
+  const m2 = s.match(/([A-Z0-9_-]{3,32})/i);
+  if (m2 && m2[1]) return String(m2[1] || "").trim();
+  return s;
+}
+
 function connect(code) {
-  const c = String(code || "").trim();
+  const c = _extractSession(code);
   if (!/^[A-Z0-9_-]{3,32}$/i.test(c)) {
     setStatus("código inválido");
+    return;
+  }
+  if (!state.syncEnabled) {
+    setStatus("sync desactivado");
     return;
   }
   setSession(c);
@@ -143,7 +195,7 @@ async function startCamera() {
     return;
   }
   try {
-    state.detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+    state.detector = new BarcodeDetector({ formats: ["qr_code", "ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
   } catch {
     state.detector = new BarcodeDetector();
   }
@@ -187,7 +239,17 @@ async function loopDetect() {
         const det = await state.detector.detect(bmp);
         if (det && det.length) {
           const raw = String(det[0]?.rawValue || "").trim();
-          if (raw) await pushEvent(raw);
+          if (raw) {
+            if (state.syncEnabled && !state.session) {
+              const sid = _extractSession(raw);
+              if (/^[A-Z0-9_-]{3,32}$/i.test(sid)) {
+                connect(sid);
+                setStatus("sesión detectada");
+              }
+            } else {
+              await pushEvent(raw);
+            }
+          }
         }
       }
     } catch {}
@@ -205,6 +267,35 @@ $("btnCam").addEventListener("click", () => {
   if (!state.running) startCamera();
   else stopCamera();
 });
+
+function setSyncEnabled(v) {
+  state.syncEnabled = !!v;
+  const card = $("connect-card");
+  if (card) card.style.display = state.syncEnabled ? "" : "none";
+  if (!state.syncEnabled) {
+    state.session = "";
+    $("code").value = "";
+    setSession("LOCAL");
+    setStatus("guardando en celular");
+  } else {
+    setSession(state.session || "—");
+    setStatus(navigator.onLine ? "inactivo" : "offline");
+  }
+}
+
+try {
+  const s = $("sync");
+  if (s) {
+    s.addEventListener("change", () => setSyncEnabled(s.checked));
+    setSyncEnabled(!!s.checked);
+  }
+} catch {}
+
+try {
+  const arr = _loadLocal();
+  _saveLocal(arr);
+  $("btnClearLocal")?.addEventListener("click", () => { _saveLocal([]); setStatus(state.syncEnabled ? "inactivo" : "guardando en celular"); });
+} catch {}
 
 const preset = parseSessionFromUrl();
 if (preset) connect(preset);
