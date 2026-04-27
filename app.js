@@ -1135,7 +1135,17 @@ function _scanUiSet(text) {
   const link = document.getElementById("scan-link");
   if (link) {
     if (_scanSessId) {
-      const u = `${window.location.origin}${window.location.pathname.replace(/index\.html?$/i, "")}scan.html?session=${_scanSessId}`;
+      const u = (function() {
+        const sid = encodeURIComponent(String(_scanSessId || "").trim());
+        const basePath = window.location.pathname.replace(/index\.html?$/i, "");
+        const localUrl = `${window.location.origin}${basePath}scan.html?session=${sid}`;
+        if (window.location.protocol === "https:") return localUrl;
+        if (String(window.location.hostname || "").includes("github.io")) return localUrl;
+        const cfg = String(localStorage.getItem("scan_mobile_base") || "").trim();
+        const gh = cfg || "https://moisesohs1007.github.io/libreria-stock/";
+        const root = gh.endsWith("/") ? gh : (gh + "/");
+        return `${root}scan.html?session=${sid}`;
+      })();
       link.textContent = u;
       link.dataset.url = u;
     } else {
@@ -1143,6 +1153,18 @@ function _scanUiSet(text) {
       link.dataset.url = "";
     }
   }
+  try {
+    const box = document.getElementById("scan-qr");
+    const url = String(document.getElementById("scan-link")?.dataset?.url || "").trim();
+    if (box) {
+      box.innerHTML = "";
+      if (url && typeof window.QRCode === "function") {
+        new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
+      } else {
+        box.textContent = "—";
+      }
+    }
+  } catch {}
 }
 
 function _scanStopListener() {
@@ -1200,6 +1222,13 @@ function _scanActiveTab() {
 function _scanHandleIncoming(code) {
   if (rolActual !== "admin") return;
   const active = _scanActiveTab();
+  try {
+    const inputAny = document.getElementById("codigo-barras");
+    if (inputAny && String(active || "") !== "tab-agregar") {
+      inputAny.value = code;
+      _scanUiSet("recibido (ve a Registrar producto)");
+    }
+  } catch {}
   const ae = document.activeElement;
   const focusId = ae && ae.id ? String(ae.id) : "";
   const use = (id) => document.getElementById(id);
@@ -1446,6 +1475,7 @@ window.camScanStop = function() {
 };
 
 window.stockBuscarCodigo = function(arg) {
+  if (rolActual !== "admin") return;
   const input = document.getElementById("codigo-barras");
   const raw = (typeof arg === "string" ? arg : (input?.value || "")).trim();
   const cleaned = sanitizeScanCode(raw);

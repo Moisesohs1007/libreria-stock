@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260427h">
+  <link rel="stylesheet" href="style.css?v=20260427i">
 </head>
 <body>
 <input id="scanner" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0;" autocomplete="off"/>
@@ -424,15 +424,20 @@
                 <div style="flex:1;min-width:220px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                   <span id="scan-link" class="mono" data-url="">—</span>
                 </div>
-                <button onclick="scanCopiarLink()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Copiar</button>
-                <button onclick="scanAbrirLink()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Abrir</button>
+                <button onclick="scanAbrirLink()" class="btn btn-primary" style="justify-content:center;white-space:nowrap;">Abrir en PC</button>
               </div>
-              <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#666;display:flex;gap:12px;flex-wrap:wrap;">
-                <div>Sesión: <span id="scan-sesion" class="mono" style="font-weight:900;">—</span></div>
-                <div>Estado: <span id="scan-status-text" class="mono" style="font-weight:900;">—</span></div>
-              </div>
-              <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;line-height:1.4;">
-                Abre ese link en tu celular para escanear y que el código llegue aquí.
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+                <div id="scan-qr" style="width:132px;height:132px;background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;"></div>
+                <div style="flex:1;min-width:220px;">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#666;line-height:1.5;">
+                    Escanea este QR con la cámara de tu celular.<br>
+                    Se abre el escáner automáticamente y lo que escanees llega a esta PC.
+                  </div>
+                  <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#666;display:flex;gap:12px;flex-wrap:wrap;">
+                    <div>Sesión: <span id="scan-sesion" class="mono" style="font-weight:900;">—</span></div>
+                    <div>Estado: <span id="scan-status-text" class="mono" style="font-weight:900;">—</span></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1329,4 +1334,4 @@
   })();
 </script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260427h'></script></body></html>
+<script type='module' src='app.js?v=20260427i'></script></body></html>
