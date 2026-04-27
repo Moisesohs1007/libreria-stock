@@ -93,6 +93,29 @@ async function _initScanMode() {
   try { await import(`./scan.js?v=20260427s`); } catch {}
 }
 
+window.scanModeOpen = function() {
+  try {
+    const sid = "ADMIN";
+    const u = new URL(window.location.href);
+    u.searchParams.set("scan", "1");
+    u.searchParams.set("session", sid);
+    u.searchParams.set("v", "20260427s");
+    window.location.href = u.toString();
+  } catch {}
+};
+
+window.scanModeExit = function() {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.delete("scan");
+    u.searchParams.delete("session");
+    u.searchParams.delete("v");
+    window.location.href = u.toString();
+  } catch {
+    try { window.location.href = window.location.pathname; } catch {}
+  }
+};
+
 function scanServiceBase() {
   const override = localStorage.getItem("scan_svc_base");
   if (override) return override;
@@ -1535,6 +1558,19 @@ async function _camLoop() {
     const hits = await det.detect(v);
     if (Array.isArray(hits) && hits.length) {
       const raw = String(hits[0]?.rawValue || "").trim();
+      try {
+        if (/^https?:\/\//i.test(raw)) {
+          const u = new URL(raw);
+          const isScan = String(u.searchParams.get("scan") || "") === "1";
+          const sess = String(u.searchParams.get("session") || "").trim();
+          if (isScan || sess) {
+            _camSetStatus("✅ QR detectado. Abriendo…", "ok");
+            window.camScanStop();
+            setTimeout(() => { try { window.location.href = raw; } catch {} }, 120);
+            return;
+          }
+        }
+      } catch {}
       const cleaned = sanitizeScanCode(raw);
       const vb = validateBarcode(cleaned, { allowLib: true });
       if (!vb.ok) {
