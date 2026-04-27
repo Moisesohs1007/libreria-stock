@@ -1157,11 +1157,20 @@ function _scanUiSet(text) {
     const box = document.getElementById("scan-qr");
     const url = String(document.getElementById("scan-link")?.dataset?.url || "").trim();
     if (box) {
-      box.innerHTML = "";
-      if (url && typeof window.QRCode === "function") {
-        new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
-      } else {
-        box.textContent = "—";
+      const render = () => {
+        try {
+          box.innerHTML = "";
+          if (!url) { box.textContent = "—"; return true; }
+          if (typeof window.QRCode !== "function") { box.textContent = "Cargando…"; return false; }
+          new window.QRCode(box, { text: url, width: 128, height: 128, correctLevel: window.QRCode.CorrectLevel.M });
+          return true;
+        } catch {
+          box.textContent = "—";
+          return true;
+        }
+      };
+      if (!render()) {
+        setTimeout(() => { try { if (!render()) setTimeout(() => { try { render(); } catch {} }, 900); } catch {} }, 300);
       }
     }
   } catch {}
