@@ -1193,15 +1193,16 @@ function _scanUiSet(text) {
   if (link) {
     if (_scanSessId) {
       const u = (function() {
+        const ver = "20260427r";
         const sid = encodeURIComponent(String(_scanSessId || "").trim());
         const basePath = window.location.pathname.replace(/index\.html?$/i, "");
-        const localUrl = `${window.location.origin}${basePath}scan.html?session=${sid}`;
+        const localUrl = `${window.location.origin}${basePath}scan.html?v=${ver}&session=${sid}`;
         if (window.location.protocol === "https:") return localUrl;
         if (String(window.location.hostname || "").includes("github.io")) return localUrl;
         const cfg = String(localStorage.getItem("scan_mobile_base") || "").trim();
         const gh = cfg || "https://moisesohs1007.github.io/libreria-stock/";
         const root = gh.endsWith("/") ? gh : (gh + "/");
-        return `${root}scan.html?session=${sid}`;
+        return `${root}scan.html?v=${ver}&session=${sid}`;
       })();
       link.textContent = u;
       link.dataset.url = u;
