@@ -7,13 +7,13 @@
  * asignarse explícitamente al objeto 'window'.
  */
 
-import { db, storage } from './firebase-config.js?v=20260427e';
-import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427e';
-import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427e';
-import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427e';
+import { db, storage } from './firebase-config.js?v=20260427f';
+import { sanitizeScanCode, buildScanVariants, isLikelyScanByTiming, validateBarcode } from './scanner_utils.js?v=20260427f';
+import { lookupBarcodeOnline, getBarcodeLookupConfig, setBarcodeLookupConfig } from './barcode_lookup.js?v=20260427f';
+import { buildVentasExport, buildMovimientosExport } from './report_export_utils.js?v=20260427f';
 import {
   collection, getDocs, query, where, updateDoc, addDoc, onSnapshot, doc, 
-  increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit
+  increment, deleteDoc, Timestamp, runTransaction, setDoc, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   ref as storageRef, uploadBytes, getDownloadURL
@@ -149,6 +149,36 @@ function mostrarMensaje(texto, tipo="ok") {
   window._msgTimer = setTimeout(() => el.classList.remove("visible"), 3000);
 }
 window.mostrarMensaje = mostrarMensaje;
+
+function _stockClearForm() {
+  const ids = ["codigo-barras","nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra","rec-packs","rec-upp","rec-unitcode"];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  }
+  const cb = document.getElementById("codigo-barras");
+  if (cb) cb.dataset.foundId = "";
+  _stockSetMsg("", "");
+  _recSetMsg("", "");
+  const pm = document.getElementById("pack-mode");
+  if (pm) pm.checked = false;
+  const sec = document.getElementById("rec-section");
+  if (sec) sec.style.display = "none";
+  const rm = document.getElementById("rec-master");
+  if (rm) rm.value = "";
+  const sl = document.getElementById("stock-label");
+  if (sl) sl.textContent = "Stock inicial *";
+  const stockEl = document.getElementById("stock");
+  if (stockEl) {
+    stockEl.placeholder = "50";
+    try { stockEl.min = "0"; } catch {}
+  }
+  const ab = document.getElementById("stock-actual-box");
+  if (ab) ab.style.display = "none";
+  const sa = document.getElementById("stock-actual");
+  if (sa) sa.textContent = "—";
+  try { document.getElementById("codigo-barras")?.focus?.(); } catch {}
+}
 
 window.toggleDtGroup = window.toggleDtGroup || function(groupId) {
   try {
@@ -1065,8 +1095,8 @@ window.recConfirmar = async function() {
     await _auditLog(unit?.id ? "update" : "create", "productos", unitRef.id, beforeUnit, { ...(beforeUnit || {}), ...afterUnit });
     await _auditLog("create", "inventory_movements", movRef.id, null, { master_code: master, unit_code: unitCode, packs, units_total: unitsTotal });
 
-    _recSetMsg(`✅ Desagregado: ${packs} paquete(s) → ${unitsTotal} und. (SKU unidad: ${unitCode})`, "ok");
-    ["rec-packs"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    mostrarMensaje(`✅ Desagregado: ${packs} paquete(s) → ${unitsTotal} und.`, "ok");
+    _stockClearForm();
   } catch (e) {
     _recSetMsg("❌ Error registrando desagregación. Reintenta.", "error");
   }
@@ -1118,15 +1148,17 @@ function _scanSaveLastAt(sid, at) {
 async function _scanStartListener(sid) {
   _scanStopListener();
   _scanSessLastAt = _scanLoadLastAt(sid);
+  if (_scanSessLastAt > (Date.now() + 60000)) _scanSessLastAt = 0;
   const ev = collection(db, "scan_sessions", sid, "events");
-  const qy = query(ev, where("clientAt", ">", _scanSessLastAt), orderBy("clientAt", "asc"), limit(60));
+  const lastTs = Timestamp.fromMillis(_toNum(_scanSessLastAt));
+  const qy = query(ev, where("at", ">", lastTs), orderBy("at", "asc"), limit(60));
   _scanSessUnsub = onSnapshot(qy, (snap) => {
     const docs = snap.docs || [];
     if (!docs.length) return;
     for (const d of docs) {
       const data = d.data() || {};
       const code = String(data.code || "").trim();
-      const at = _toNum(data.clientAt);
+      const at = _toNum(data.at?.toMillis?.() || data.clientAt);
       if (!code) continue;
       if (at && at > _scanSessLastAt) _scanSessLastAt = at;
       if (code === _scanSessLastCode && (Date.now() - (at || 0)) < 1200) continue;
@@ -1209,13 +1241,15 @@ function _scanSessGetId() {
 
 async function _scanSessSend(code, source) {
   const sid = String(_scanSessGetId() || "").trim();
-  if (!/^\d{6}$/.test(sid)) return false;
+  if (!sid) return false;
+  if (!/^[A-Z0-9_-]{3,32}$/i.test(sid)) return false;
   const c = sanitizeScanCode(code);
   if (!c) return false;
   try {
     const { rol, nombre, user_id, usuario } = leerSesion();
     await addDoc(collection(db, "scan_sessions", sid, "events"), {
       code: c,
+      at: serverTimestamp(),
       clientAt: Date.now(),
       source: String(source || ""),
       url: String(location.href || ""),
@@ -1404,6 +1438,9 @@ window.stockBuscarCodigo = function(arg) {
   const catEl = document.getElementById("prod-categoria");
   const provEl = document.getElementById("prod-proveedor");
   const stockEl = document.getElementById("stock");
+  const stockLbl = document.getElementById("stock-label");
+  const stockActBox = document.getElementById("stock-actual-box");
+  const stockAct = document.getElementById("stock-actual");
   const pvEl = document.getElementById("precio-venta");
   const pcEl = document.getElementById("precio-compra");
   if (p) {
@@ -1413,10 +1450,24 @@ window.stockBuscarCodigo = function(arg) {
     if (provEl) provEl.value = String(p.proveedor || "");
     if (pvEl) pvEl.value = String(_precioVenta(p));
     if (pcEl) pcEl.value = String(_precioCompra(p));
-    if (stockEl) stockEl.value = "1";
-    _stockSetMsg(`Producto encontrado: "${String(p.nombre || "Producto")}". Ingresa cantidad en Stock para sumar.`, "ok");
+    if (stockLbl) stockLbl.textContent = "Cantidad a agregar *";
+    if (stockActBox) stockActBox.style.display = "block";
+    if (stockAct) stockAct.textContent = String(_toNum(p.stock));
+    if (stockEl) {
+      stockEl.value = "";
+      stockEl.placeholder = "Ej: 1";
+      try { stockEl.min = "1"; } catch {}
+    }
+    _stockSetMsg(`Producto encontrado: "${String(p.nombre || "Producto")}". Ingresa cantidad para sumar y guarda.`, "ok");
   } else {
     if (input) input.dataset.foundId = "";
+    if (stockLbl) stockLbl.textContent = "Stock inicial *";
+    if (stockActBox) stockActBox.style.display = "none";
+    if (stockAct) stockAct.textContent = "—";
+    if (stockEl) {
+      stockEl.placeholder = "50";
+      try { stockEl.min = "0"; } catch {}
+    }
     _stockSetMsg("No encontrado. Completa los datos y presiona Guardar para registrarlo.", "warning");
   }
 };
@@ -1518,7 +1569,7 @@ window.agregarProducto = async function() {
       await _auditLog("update", "productos", existing.id, before, { ...(before || {}), stock: (_toNum(before?.stock) + stock), nombre: (nombre || before?.nombre), categoria: (categoria || before?.categoria), proveedor: (proveedor || before?.proveedor), precio_venta: (Number.isFinite(precioVenta) ? precioVenta : before?.precio_venta), precio_compra: (Number.isFinite(precioCompra) ? precioCompra : before?.precio_compra) });
       mostrarMensaje(`✅ Stock actualizado: +${stock}`, "ok");
       _stockSetMsg(`Actualizado: +${stock} al stock de "${String(existing.nombre || "Producto")}".`, "ok");
-      ["stock"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
+      _stockClearForm();
       return;
     } catch (e) {
       mostrarMensaje("❌ Error actualizando stock", "error");
@@ -1537,8 +1588,7 @@ window.agregarProducto = async function() {
     await addDoc(collection(db,"productos"),{codigo,nombre,stock,precio_venta,precio_compra,precio:precio_venta,categoria,proveedor,creadoEn:new Date()});
     mostrarMensaje(`✅ "${nombre}" agregado`,"ok");
     _stockSetMsg(`Registrado: "${nombre}" (${codigo})`, "ok");
-    ["codigo-barras","nombre","prod-categoria","prod-proveedor","stock","precio-venta","precio-compra"].forEach(id=>{const el=document.getElementById(id); if(el) el.value="";});
-    if (codigoEl) codigoEl.dataset.foundId = "";
+    _stockClearForm();
   }catch(e){mostrarMensaje("❌ Error: "+e.message,"error");}
 };
 

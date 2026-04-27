@@ -1,5 +1,5 @@
-import { db } from "./firebase-config.js?v=20260427e";
-import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427e";
+import { db } from "./firebase-config.js?v=20260427g";
+import { sanitizeScanCode, buildScanVariants, validateBarcode } from "./scanner_utils.js?v=20260427g";
 import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
@@ -117,7 +117,7 @@ function parseSessionFromUrl() {
 
 function connect(code) {
   const c = String(code || "").trim();
-  if (!/^\d{6}$/.test(c)) {
+  if (!/^[A-Z0-9_-]{3,32}$/i.test(c)) {
     setStatus("código inválido");
     return;
   }

@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260427e">
+  <link rel="stylesheet" href="style.css?v=20260427g">
 </head>
 <body>
 <input id="scanner" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0;" autocomplete="off"/>
@@ -410,16 +410,12 @@
     <div id="tab-agregar" class="tab-panel">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="card">
-          <div class="card-title">Registrar producto por escaneo</div>
+          <div class="card-title">Registrar producto (Escáner / Cámara PC / Cámara celular / Manual)</div>
           <div class="mb-3">
             <label class="input-label">Código de barras (EAN/UPC) o LIB- *</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <input id="codigo-barras" class="input-field" placeholder="Escanea aquí..." style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter'){stockBuscarCodigo();}">
               <button onclick="camScanStart()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Cámara</button>
-              <button onclick="stockBuscarOnline()" class="btn" style="justify-content:center;white-space:nowrap;background:#eee;">Internet</button>
-            </div>
-            <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#777;">
-              Escanea y el sistema autocompleta si ya existe. “Internet” intenta autocompletar si no existe (configurable).
             </div>
             <div id="stock-scan-msg" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid var(--border);background:var(--paper);border-radius:12px;"></div>
           </div>
@@ -433,7 +429,13 @@
             <div><label class="input-label">Proveedor</label><input id="prod-proveedor" class="input-field" placeholder="Ej: Distribuidora X"></div>
           </div>
           <div class="grid grid-cols-2 gap-3 mb-3">
-            <div><label class="input-label">Stock *</label><input id="stock" type="number" min="0" class="input-field" placeholder="50"></div>
+            <div>
+              <label class="input-label"><span id="stock-label">Stock inicial *</span></label>
+              <input id="stock" type="number" min="0" class="input-field" placeholder="50">
+              <div id="stock-actual-box" style="display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.82rem;color:#111;background:#f8fafc;border:1px solid var(--border);padding:6px 10px;border-radius:12px;">
+                Stock actual: <span id="stock-actual" class="mono" style="font-weight:900;">—</span>
+              </div>
+            </div>
             <div><label class="input-label">Precio venta S/ *</label><input id="precio-venta" type="number" step="0.01" min="0" class="input-field" placeholder="3.50"></div>
           </div>
           <div class="mb-4">
@@ -464,7 +466,6 @@
 
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
             <button onclick="guardarRegistroStock()" class="btn btn-primary" style="flex:1;justify-content:center;min-width:180px;">Guardar</button>
-            <button onclick="stockConfigLookup()" class="btn" style="background:#eee;justify-content:center;min-width:160px;">Config Internet</button>
           </div>
         </div>
         <!-- Excel -->
@@ -1311,4 +1312,4 @@
   })();
 </script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script type='module' src='app.js?v=20260427e'></script></body></html>
+<script type='module' src='app.js?v=20260427g'></script></body></html>
