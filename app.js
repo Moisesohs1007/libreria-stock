@@ -397,6 +397,7 @@ window.ejecutarLogin = async function() {
   const pass = document.getElementById("login-pass").value.trim();
   const errDiv = document.getElementById("login-error");
   if (errDiv) errDiv.style.display = "none";
+  const key = String(user || "").trim().toLowerCase();
 
   if (user.toLowerCase() === ADMIN_USER.toLowerCase() && pass === ADMIN_PASS) {
     guardarSesionExt("admin", "Admin", { user_id: "admin", usuario: "Admin" });
@@ -413,10 +414,23 @@ window.ejecutarLogin = async function() {
       activarVendedor(v.nombre);
       return;
     }
+    const all = await getDocs(collection(db, "vendedores"));
+    const found = all.docs
+      .map(d => ({ id: d.id, ...(d.data() || {}) }))
+      .find(v => {
+        const u = String(v?.usuario || "").trim().toLowerCase();
+        const n = String(v?.nombre || "").trim().toLowerCase();
+        return (key && (u === key || n === key)) && String(v?.password || "") === pass;
+      });
+    if (found) {
+      guardarSesionExt("vendedor", found.nombre, { user_id: found.id, usuario: found.usuario || user });
+      activarVendedor(found.nombre);
+      return;
+    }
   } catch(e) { console.error("Error Login:", e); }
 
   if (errDiv) {
-    errDiv.textContent = "❌ Usuario o contraseña incorrectos";
+    errDiv.textContent = "❌ No se pudo ingresar (usuario/contraseña o conexión)";
     errDiv.style.display = "block";
   }
 };
