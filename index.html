@@ -194,49 +194,38 @@
     <!-- Tab reporte deudas vendedor -->
     <div id="vtab-reporte-v" class="tab-panel fiadas-section">
       <div class="card">
-        <div class="card-title">Filtrar reporte</div>
-        <div class="rep-tab-nav">
-          <button class="rep-tab-btn active" id="vrt-dia" onclick="switchRepTabV('vrp-dia','vrt-dia')">Por día</button>
-          <button class="rep-tab-btn" id="vrt-rango" onclick="switchRepTabV('vrp-rango','vrt-rango')">Rango de fechas</button>
-        </div>
-        <div id="vrp-dia" class="rep-panel active">
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-            <div><label class="fiadas-label">Día</label><input type="date" id="vrep-dia" class="fiadas-input" style="width:auto;"></div>
-            <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="generarReporteDeudasV()">Ver reporte</button>
+        <div class="card-title">Reporte de deudas (Copias Fiadas)</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label class="fiadas-label">Desde</label>
+            <input type="date" id="vfiada-rep-desde" class="fiadas-input" style="width:auto;">
           </div>
-        </div>
-        <div id="vrp-rango" class="rep-panel">
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-            <div><label class="fiadas-label">Desde</label><input type="date" id="vrep-desde" class="fiadas-input" style="width:auto;"></div>
-            <div><label class="fiadas-label">Hasta</label><input type="date" id="vrep-hasta" class="fiadas-input" style="width:auto;"></div>
-            <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="generarReporteDeudasV()">Ver reporte</button>
+          <div>
+            <label class="fiadas-label">Hasta</label>
+            <input type="date" id="vfiada-rep-hasta" class="fiadas-input" style="width:auto;" disabled>
           </div>
+          <div style="min-width:240px;">
+            <label class="fiadas-label">Cliente</label>
+            <select id="vfiada-rep-cliente" class="fiadas-input">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="vFiadaRepVer()">Ver reporte</button>
+        </div>
+        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;line-height:1.4;">
+          Si llenas solo “Desde”, se toma como reporte de ese día.
         </div>
       </div>
-      <div id="vrep-resultado" style="display:none;">
-        <div class="card">
-          <div class="card-title" id="vrep-titulo">Reporte</div>
-          <div class="rep-stat-grid">
-            <div class="rep-stat"><div class="rep-stat-num" id="vrep-ganancia" style="color:#4ade80;">S/0.00</div><div class="rep-stat-lbl">Ganancia</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="vrep-copias" style="color:#60a5fa;">0</div><div class="rep-stat-lbl">Caras físicas</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="vrep-deuda" style="color:#f4a261;">S/0.00</div><div class="rep-stat-lbl">Total deudas</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="vrep-mal" style="color:#f87171;">0</div><div class="rep-stat-lbl">Hojas malogradas</div></div>
-          </div>
-          <div style="font-size:0.65rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:8px;font-family:'IBM Plex Mono',monospace;">Detalle por cliente</div>
-          <div style="overflow-x:auto;">
-            <table class="fiadas-hist-table">
-              <thead><tr><th>CLIENTE</th><th>CARA</th><th>DUPLEX</th><th>CONTADOR</th><th>DEUDA</th></tr></thead>
-              <tbody id="vrep-detalle"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr></tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;margin-top:10px;background:var(--paper);border:2px solid #c2410c;">
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:0.8rem;font-weight:700;color:#c2410c;">Hojas malogradas:</span>
-            <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:1rem;color:#c2410c;" id="vrep-mal2">0 hojas</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;margin-top:8px;background:var(--paper);border-top:2px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;">
-            <span style="font-weight:700;">GANANCIA NETA</span>
-            <span style="font-weight:700;color:var(--green);font-size:1.1rem;" id="vrep-neta">S/ 0.00</span>
-          </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div class="card-title" style="margin:0;">Resumen por cliente</div>
+          <div id="vfiada-rep-sub" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;"></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="fiadas-hist-table">
+            <thead><tr><th>CLIENTE</th><th>TOTAL</th><th></th></tr></thead>
+            <tbody id="vfiada-rep-tbody"><tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -881,50 +870,45 @@
     <!-- TAB REPORTE DEUDAS (ADMIN) -->
     <div id="tab-reporte" class="tab-panel fiadas-section">
       <div class="card">
-        <div class="card-title">Filtrar reporte</div>
-        <div class="rep-tab-nav">
-          <button class="rep-tab-btn active" id="rt-dia" onclick="switchRepTab('rp-dia','rt-dia')">Por día</button>
-          <button class="rep-tab-btn" id="rt-rango" onclick="switchRepTab('rp-rango','rt-rango')">Rango de fechas</button>
-        </div>
-        <div id="rp-dia" class="rep-panel active">
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-            <div><label class="fiadas-label">Día</label><input type="date" id="rep-dia" class="fiadas-input" style="width:auto;"></div>
-            <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="generarReporteDeudas()">Ver reporte</button>
+        <div class="card-title">Reporte de deudas (Copias Fiadas)</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="min-width:220px;">
+            <label class="fiadas-label">Vendedor</label>
+            <select id="afiada-rep-vendedor" class="fiadas-input">
+              <option value="">Todos</option>
+            </select>
           </div>
-        </div>
-        <div id="rp-rango" class="rep-panel">
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-            <div><label class="fiadas-label">Desde</label><input type="date" id="rep-desde" class="fiadas-input" style="width:auto;"></div>
-            <div><label class="fiadas-label">Hasta</label><input type="date" id="rep-hasta" class="fiadas-input" style="width:auto;"></div>
-            <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="generarReporteDeudas()">Ver reporte</button>
+          <div>
+            <label class="fiadas-label">Desde</label>
+            <input type="date" id="afiada-rep-desde" class="fiadas-input" style="width:auto;">
           </div>
+          <div>
+            <label class="fiadas-label">Hasta</label>
+            <input type="date" id="afiada-rep-hasta" class="fiadas-input" style="width:auto;" disabled>
+          </div>
+          <div style="min-width:240px;">
+            <label class="fiadas-label">Cliente</label>
+            <select id="afiada-rep-cliente" class="fiadas-input">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <button class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;" onclick="aFiadaRepVer()">Ver reporte</button>
+        </div>
+        <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;line-height:1.4;">
+          Si llenas solo “Desde”, se toma como reporte de ese día.
         </div>
       </div>
 
-      <div id="reporte-resultado" style="display:none;">
-        <div class="card">
-          <div class="card-title" id="rep-titulo">Reporte</div>
-          <div class="rep-stat-grid">
-            <div class="rep-stat"><div class="rep-stat-num" id="rep-ganancia" style="color:#4ade80;">S/0.00</div><div class="rep-stat-lbl">Ganancia</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="rep-copias" style="color:#60a5fa;">0</div><div class="rep-stat-lbl">Caras físicas</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="rep-deuda" style="color:#f4a261;">S/0.00</div><div class="rep-stat-lbl">Total deudas</div></div>
-            <div class="rep-stat"><div class="rep-stat-num" id="rep-mal" style="color:#f87171;">0</div><div class="rep-stat-lbl">Hojas malogradas</div></div>
-          </div>
-          <div style="font-size:0.65rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:8px;font-family:'IBM Plex Mono',monospace;">Detalle por cliente</div>
-          <div style="overflow-x:auto;">
-            <table class="fiadas-hist-table">
-              <thead><tr><th>CLIENTE</th><th>CARA</th><th>DUPLEX</th><th>CONTADOR</th><th>DEUDA</th></tr></thead>
-              <tbody id="rep-detalle"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr></tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;margin-top:10px;background:var(--paper);border:2px solid #c2410c;">
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:0.8rem;font-weight:700;color:#c2410c;">Hojas malogradas del período:</span>
-            <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:1rem;color:#c2410c;" id="rep-mal2">0 hojas</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;margin-top:8px;background:var(--paper);border-top:2px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;">
-            <span style="font-weight:700;">GANANCIA NETA del período</span>
-            <span style="font-weight:700;color:var(--green);font-size:1.1rem;" id="rep-neta">S/ 0.00</span>
-          </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div class="card-title" style="margin:0;">Resumen por cliente</div>
+          <div id="afiada-rep-sub" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;"></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="fiadas-hist-table">
+            <thead><tr><th>CLIENTE</th><th>TOTAL</th><th></th></tr></thead>
+            <tbody id="afiada-rep-tbody"><tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1281,6 +1265,42 @@
           <tr><td style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE DEUDA FIADA -->
+<div id="modal-fiada-detalle" class="modal-overlay">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div class="card-title" style="margin:0;">Detalle — <span id="fiada-det-cliente"></span></div>
+      <button onclick="cerrarModal('modal-fiada-detalle')" class="btn" style="background:#eee;">×</button>
+    </div>
+    <div id="fiada-det-sub" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;"></div>
+    <div style="margin-top:10px;overflow:auto;max-height:52vh;">
+      <table class="fiadas-hist-table">
+        <thead><tr><th>FECHA</th><th>SIMPLE</th><th>DUPLEX</th><th>CARAS</th><th>MONTO</th></tr></thead>
+        <tbody id="fiada-det-tbody"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr></tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;margin-top:10px;background:var(--paper);border-top:2px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;">
+      <span style="font-weight:700;">TOTAL</span>
+      <span style="font-weight:900;color:var(--green);font-size:1.05rem;" id="fiada-det-total">S/ 0.00</span>
+    </div>
+    <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px;">
+      <div style="font-weight:900;color:#0f172a;margin-bottom:8px;">Pago / amortización</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="min-width:160px;flex:0 0 auto;">
+          <label class="input-label">Monto S/</label>
+          <input type="number" step="0.01" min="0" id="fiada-pay-monto" class="input-field" placeholder="0.00">
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <label class="input-label">Nota (opcional)</label>
+          <input id="fiada-pay-nota" class="input-field" placeholder="Ej: adelanto...">
+        </div>
+        <button onclick="fiadaRegistrarPago()" class="btn btn-primary" style="white-space:nowrap;">Registrar pago</button>
+      </div>
+      <div id="fiada-pay-msg" style="display:none;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:8px 10px;border:2px solid;border-radius:10px;"></div>
     </div>
   </div>
 </div>

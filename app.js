@@ -38,6 +38,7 @@ let todasLasVentas     = [];
 let todasLasCategorias = [];
 let todosLosProveedores = [];
 let todosLosMovimientos = [];
+let todosLosVendedores = [];
 let rolActual          = null; 
 let nombreVendedor     = "";
 let listenersIniciados = false;
@@ -426,6 +427,7 @@ function activarAdmin() {
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display  = "block";
   iniciarListeners();
+  try { _fiadaInitReportUi("a"); } catch {}
   try {
     const pm = document.getElementById("pack-mode");
     const sec = document.getElementById("rec-section");
@@ -460,6 +462,7 @@ function activarVendedor(nombre) {
   if (badge) badge.textContent = nombre.toUpperCase();
   if (scannerInput) scannerInput.focus();
   iniciarListeners();
+  try { _fiadaInitReportUi("v"); } catch {}
   if (window._impAfterLogin) window._impAfterLogin();
   _offlineFlush(true);
   try { localStorage.setItem("scan_autofocus", "0"); } catch {}
@@ -671,7 +674,20 @@ function iniciarListeners() {
 
   onSnapshot(collection(db,"vendedores"), snap => {
     const lista = snap.docs.map(d => ({id:d.id,...d.data()}));
+    todosLosVendedores = lista;
     renderizarVendedores(lista);
+    try {
+      const sel = document.getElementById("afiada-rep-vendedor");
+      if (sel) {
+        const cur = String(sel.value || "");
+        const opts = ['<option value="">Todos</option>'].concat(
+          (todosLosVendedores || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" }))
+            .map(v => `<option value="${String(v.id || "")}">${String(v.nombre || "—")}</option>`)
+        );
+        sel.innerHTML = opts.join("");
+        try { sel.value = cur; } catch {}
+      }
+    } catch {}
   });
 
   onSnapshot(collection(db, "fin_categorias"), snap => {
@@ -2835,7 +2851,7 @@ async function _fiadaAddCliente(prefix) {
   if (!nombre) return mostrarMensaje("⚠️ Escribe el nombre del cliente", "warning");
   try {
     const s = leerSesion();
-    await addDoc(collection(db, "clientesFiados"), {
+    const ref = await addDoc(collection(db, "clientesFiados"), {
       nombre,
       creadoEn: new Date(),
       ownerUserId: s?.user_id || "",
@@ -2845,6 +2861,11 @@ async function _fiadaAddCliente(prefix) {
     });
     if (input) input.value = "";
     mostrarMensaje("✅ Cliente agregado", "ok");
+    const sel = document.getElementById(`${prefix}-fiada-sel`);
+    if (sel) {
+      sel.value = ref.id;
+      _fiadaSelect(prefix);
+    }
   } catch {
     mostrarMensaje("❌ No se pudo agregar", "error");
   }
@@ -2861,13 +2882,16 @@ async function _fiadaGuardar(prefix) {
   try {
     const s = leerSesion();
     await addDoc(collection(db, "copiasFiadas"), {
+      clienteId: id,
       cliente: cli.nombre,
+      simple: cara,
       cara,
       duplex,
       carasFisicas,
+      monto: total,
       total,
       precio: FIADA_PRECIO,
-      fecha: new Date(),
+      fecha: serverTimestamp(),
       ownerUserId: s?.user_id || "",
       ownerUsuario: s?.usuario || "",
       ownerNombre: s?.nombre || "",
@@ -2885,6 +2909,310 @@ async function _fiadaGuardar(prefix) {
     mostrarMensaje("❌ Error guardando fiada", "error");
   }
 }
+
+const _FIADA_PAGOS_COL = "copiasFiadasPagos";
+let _fiadaDetCtx = null;
+const _fiadaRepBound = { v: false, a: false };
+
+function _fiadaInitReportUi(prefix) {
+  if (prefix !== "v" && prefix !== "a") return;
+  if (_fiadaRepBound[prefix]) return;
+  _fiadaRepBound[prefix] = true;
+  const isAdmin = prefix === "a";
+  const desdeEl = document.getElementById(isAdmin ? "afiada-rep-desde" : "vfiada-rep-desde");
+  const hastaEl = document.getElementById(isAdmin ? "afiada-rep-hasta" : "vfiada-rep-hasta");
+  if (desdeEl && !String(desdeEl.value || "").trim()) desdeEl.value = _dateToYmd(new Date());
+  const sync = () => {
+    const hasDesde = !!String(desdeEl?.value || "").trim();
+    if (hastaEl) {
+      hastaEl.disabled = !hasDesde;
+      if (!hasDesde) hastaEl.value = "";
+    }
+  };
+  if (desdeEl) desdeEl.addEventListener("change", sync);
+  if (hastaEl) hastaEl.addEventListener("change", () => {});
+  sync();
+}
+
+function _fiadaRangeFromTo(prefix) {
+  const isAdmin = prefix === "a";
+  const desdeEl = document.getElementById(isAdmin ? "afiada-rep-desde" : "vfiada-rep-desde");
+  const hastaEl = document.getElementById(isAdmin ? "afiada-rep-hasta" : "vfiada-rep-hasta");
+  const d = _parseDateOnly(desdeEl?.value || "");
+  const h0 = _parseDateOnly(hastaEl?.value || "");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (!d && !h0) return { from: today, to: _endOfDay(today) };
+  if (d && !h0) return { from: d, to: _endOfDay(d) };
+  if (!d && h0) return { from: h0, to: _endOfDay(h0) };
+  return { from: d, to: _endOfDay(h0) };
+}
+
+function _fiadaClientFilter(prefix) {
+  const isAdmin = prefix === "a";
+  const sel = document.getElementById(isAdmin ? "afiada-rep-cliente" : "vfiada-rep-cliente");
+  const v = String(sel?.value || "").trim();
+  if (!v) return { clienteId: "", clienteNombre: "" };
+  const cli = clientesFiados.find(c => c.id === v);
+  return { clienteId: v, clienteNombre: String(cli?.nombre || "").trim() };
+}
+
+function _fiadaVendorFilter(prefix) {
+  if (prefix !== "a") return { ownerUserId: "" };
+  const sel = document.getElementById("afiada-rep-vendedor");
+  const v = String(sel?.value || "").trim();
+  return { ownerUserId: v };
+}
+
+function _fiadaRowToLine(f) {
+  const cara = _toInt(f?.simple ?? f?.cara);
+  const duplex = _toInt(f?.duplex);
+  const carasFisicas = _toInt(f?.carasFisicas) || (cara + duplex * 2);
+  const monto = _toNum(f?.monto) || _toNum(f?.total) || (carasFisicas * FIADA_PRECIO);
+  const fecha = _tsToDate(f?.fecha) || _tsToDate(f?.creadoEn) || new Date(0);
+  const clienteId = String(f?.clienteId || "").trim();
+  const clienteNombre = String(f?.cliente || f?.clienteNombre || "—").trim() || "—";
+  return { cara, duplex, carasFisicas, monto, fecha, clienteId, clienteNombre };
+}
+
+async function _fiadaFetchFiadas(prefix, from, to) {
+  const s = leerSesion();
+  const uid = String(s?.user_id || "");
+  const isVend = rolActual === "vendedor";
+  if (isVend && !uid) {
+    mostrarMensaje("⚠️ Sesión incompleta. Vuelve a ingresar.", "warning");
+    return [];
+  }
+  const adminOwner = _fiadaVendorFilter(prefix).ownerUserId;
+  const constraints = [
+    where("fecha", ">=", from),
+    where("fecha", "<=", to)
+  ];
+  if (isVend) constraints.unshift(where("ownerUserId", "==", uid));
+  else if (prefix === "a" && adminOwner) constraints.unshift(where("ownerUserId", "==", adminOwner));
+  const qy = query(collection(db, "copiasFiadas"), ...constraints);
+  const snap = await getDocs(qy);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function _fiadaFetchPagos(prefix, from, to) {
+  const s = leerSesion();
+  const uid = String(s?.user_id || "");
+  const isVend = rolActual === "vendedor";
+  if (isVend && !uid) return [];
+  const adminOwner = _fiadaVendorFilter(prefix).ownerUserId;
+  const constraints = [
+    where("fecha", ">=", from),
+    where("fecha", "<=", to)
+  ];
+  if (isVend) constraints.unshift(where("targetOwnerUserId", "==", uid));
+  else if (prefix === "a" && adminOwner) constraints.unshift(where("targetOwnerUserId", "==", adminOwner));
+  const qy = query(collection(db, _FIADA_PAGOS_COL), ...constraints);
+  const snap = await getDocs(qy);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+function _fiadaClientMatches(line, clienteId, clienteNombre) {
+  if (!clienteId && !clienteNombre) return true;
+  if (clienteId && line.clienteId && line.clienteId === clienteId) return true;
+  if (clienteNombre) return _clientesKey(line.clienteNombre) === _clientesKey(clienteNombre);
+  return false;
+}
+
+function _fiadaAggByClient(lines, pagos, clienteId, clienteNombre) {
+  const payByKey = new Map();
+  for (const p of (pagos || [])) {
+    const pid = String(p?.clienteId || "").trim();
+    const pnom = String(p?.clienteNombre || "").trim();
+    const key = pid ? `id:${pid}` : `n:${_clientesKey(pnom)}`;
+    const cur = payByKey.get(key) || 0;
+    payByKey.set(key, cur + _toNum(p?.monto));
+  }
+
+  const map = new Map();
+  for (const raw of (lines || [])) {
+    const ln = _fiadaRowToLine(raw);
+    if (!_fiadaClientMatches(ln, clienteId, clienteNombre)) continue;
+    const key = ln.clienteId ? `id:${ln.clienteId}` : `n:${_clientesKey(ln.clienteNombre)}`;
+    const cur = map.get(key) || { key, clienteId: ln.clienteId, clienteNombre: ln.clienteNombre, fiado: 0, caras: 0 };
+    cur.fiado += ln.monto;
+    cur.caras += ln.carasFisicas;
+    map.set(key, cur);
+  }
+
+  const out = Array.from(map.values()).map(x => {
+    const pkey = x.clienteId ? `id:${x.clienteId}` : `n:${_clientesKey(x.clienteNombre)}`;
+    const pag = payByKey.get(pkey) || 0;
+    const saldo = x.fiado - pag;
+    return { ...x, pagado: pag, saldo };
+  });
+  out.sort((a, b) => (b.saldo - a.saldo) || a.clienteNombre.localeCompare(b.clienteNombre, "es", { sensitivity: "base" }));
+  return out;
+}
+
+function _fiadaRenderResumen(prefix, rows, subTxt) {
+  const isAdmin = prefix === "a";
+  const tbody = document.getElementById(isAdmin ? "afiada-rep-tbody" : "vfiada-rep-tbody");
+  const sub = document.getElementById(isAdmin ? "afiada-rep-sub" : "vfiada-rep-sub");
+  if (sub) sub.textContent = subTxt || "";
+  if (!tbody) return;
+  if (!rows || !rows.length) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.clienteNombre}</td>
+      <td class="mono" style="font-weight:900;color:${r.saldo>=0?"var(--green)":"#ef4444"};">${_fmtSoles(r.saldo)}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-info" style="padding:6px 10px;font-size:0.72rem;" onclick="fiadaVerDetalle('${prefix}','${String(r.clienteId||"").replace(/'/g,"\\'")}','${String(r.clienteNombre||"").replace(/'/g,"\\'")}')">Detalle</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function _fiadaReporte(prefix) {
+  const { from, to } = _fiadaRangeFromTo(prefix);
+  const { clienteId, clienteNombre } = _fiadaClientFilter(prefix);
+  const isAdmin = prefix === "a";
+  const vend = _fiadaVendorFilter(prefix).ownerUserId;
+  const vendName = vend ? (todosLosVendedores || []).find(x => String(x.id || "") === vend)?.nombre : "";
+  if (isAdmin && !vend) {
+    const subTxt = `Vendedor: Todos · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+    const fiadas = await _fiadaFetchFiadas(prefix, from, to);
+    const pagos = await _fiadaFetchPagos(prefix, from, to);
+    const rows = _fiadaAggByClient(fiadas, pagos, clienteId, clienteNombre);
+    _fiadaRenderResumen(prefix, rows, subTxt);
+    return;
+  }
+  const who = isAdmin ? `Vendedor: ${vendName || "Seleccionado"}` : "Vendedor";
+  const subTxt = `${who} · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+  const fiadas = await _fiadaFetchFiadas(prefix, from, to);
+  const pagos = await _fiadaFetchPagos(prefix, from, to);
+  const rows = _fiadaAggByClient(fiadas, pagos, clienteId, clienteNombre);
+  _fiadaRenderResumen(prefix, rows, subTxt);
+}
+
+window.vFiadaRepVer = function() { return _fiadaReporte("v"); };
+window.aFiadaRepVer = function() { return _fiadaReporte("a"); };
+
+window.fiadaVerDetalle = async function(prefix, clienteId, clienteNombre) {
+  const modal = document.getElementById("modal-fiada-detalle");
+  if (!modal) return;
+  const { from, to } = _fiadaRangeFromTo(prefix);
+  const cf = { clienteId: String(clienteId || ""), clienteNombre: String(clienteNombre || "").trim() };
+  _fiadaDetCtx = { prefix, from, to, ...cf };
+  const tit = document.getElementById("fiada-det-cliente");
+  const sub = document.getElementById("fiada-det-sub");
+  if (tit) tit.textContent = cf.clienteNombre || "—";
+  if (sub) sub.textContent = `${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+  modal.classList.add("active");
+  await _fiadaRenderDetalle();
+};
+
+async function _fiadaRenderDetalle() {
+  const ctx = _fiadaDetCtx;
+  if (!ctx) return;
+  const tbody = document.getElementById("fiada-det-tbody");
+  const totalEl = document.getElementById("fiada-det-total");
+  if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Cargando...</td></tr>`;
+  const fiadas = await _fiadaFetchFiadas(ctx.prefix, ctx.from, ctx.to);
+  const pagos = await _fiadaFetchPagos(ctx.prefix, ctx.from, ctx.to);
+  const lines = fiadas.map(_fiadaRowToLine).filter(ln => _fiadaClientMatches(ln, ctx.clienteId, ctx.clienteNombre));
+  const byDay = new Map();
+  for (const ln of lines) {
+    const k = _dateToYmd(ln.fecha);
+    const cur = byDay.get(k) || { k, simple: 0, duplex: 0, caras: 0, monto: 0 };
+    cur.simple += ln.cara;
+    cur.duplex += ln.duplex;
+    cur.caras += ln.carasFisicas;
+    cur.monto += ln.monto;
+    byDay.set(k, cur);
+  }
+  const rows = Array.from(byDay.values()).sort((a, b) => a.k.localeCompare(b.k));
+
+  const payTotal = (pagos || []).reduce((s, p) => {
+    const pid = String(p?.clienteId || "").trim();
+    const pnom = String(p?.clienteNombre || "").trim();
+    const keyOk = ctx.clienteId ? (pid === ctx.clienteId) : (_clientesKey(pnom) === _clientesKey(ctx.clienteNombre));
+    if (!keyOk) return s;
+    return s + _toNum(p?.monto);
+  }, 0);
+
+  const fiadoTotal = rows.reduce((s, r) => s + r.monto, 0);
+  const saldo = fiadoTotal - payTotal;
+  if (totalEl) totalEl.textContent = _fmtSoles(saldo);
+
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="mono">${r.k}</td>
+      <td class="mono">${r.simple}</td>
+      <td class="mono">${r.duplex}</td>
+      <td class="mono">${r.caras}</td>
+      <td class="mono" style="font-weight:900;color:var(--green);">${_fmtSoles(r.monto)}</td>
+    </tr>
+  `).join("");
+}
+
+window.fiadaRegistrarPago = async function() {
+  const ctx = _fiadaDetCtx;
+  if (!ctx) return;
+  const msg = document.getElementById("fiada-pay-msg");
+  const monto = _toNum(document.getElementById("fiada-pay-monto")?.value || 0);
+  const nota = String(document.getElementById("fiada-pay-nota")?.value || "").trim();
+  if (!Number.isFinite(monto) || monto <= 0) return mostrarMensaje("⚠️ Monto inválido", "warning");
+
+  const s = leerSesion();
+  const isVend = rolActual === "vendedor";
+  const uid = String(s?.user_id || "");
+  const isAdmin = rolActual === "admin";
+  if (isVend && !uid) return mostrarMensaje("⚠️ Sesión incompleta. Vuelve a ingresar.", "warning");
+  let targetOwnerUserId = "";
+  if (isVend) targetOwnerUserId = uid;
+  if (isAdmin) {
+    const vsel = String(document.getElementById("afiada-rep-vendedor")?.value || "").trim();
+    if (!vsel) return mostrarMensaje("⚠️ Selecciona un vendedor para registrar el pago", "warning");
+    targetOwnerUserId = vsel;
+  }
+  try {
+    await addDoc(collection(db, _FIADA_PAGOS_COL), {
+      clienteId: ctx.clienteId || "",
+      clienteNombre: ctx.clienteNombre || "",
+      monto,
+      nota,
+      fecha: serverTimestamp(),
+      targetOwnerUserId,
+      ownerUserId: s?.user_id || "",
+      ownerUsuario: s?.usuario || "",
+      ownerNombre: s?.nombre || "",
+      ownerRol: s?.rol || ""
+    });
+    const m = document.getElementById("fiada-pay-monto"); if (m) m.value = "";
+    const n = document.getElementById("fiada-pay-nota"); if (n) n.value = "";
+    if (msg) {
+      msg.textContent = "✅ Pago registrado";
+      msg.style.display = "block";
+      msg.style.borderColor = "var(--green)";
+      msg.style.color = "#065f46";
+      msg.style.background = "#d1fae5";
+      setTimeout(() => { try { msg.style.display = "none"; } catch {} }, 2500);
+    }
+    await _fiadaRenderDetalle();
+    await _fiadaReporte(ctx.prefix);
+  } catch (e) {
+    if (msg) {
+      msg.textContent = `❌ Error: ${String(e?.message || e)}`;
+      msg.style.display = "block";
+      msg.style.borderColor = "#ef4444";
+      msg.style.color = "#991b1b";
+      msg.style.background = "#fee2e2";
+    }
+  }
+};
 
 function _clientesKey(s) {
   return String(s || "")
@@ -2941,7 +3269,7 @@ function _renderClientesFiadosModal() {
 
   tbody.innerHTML = list
     .map(c => {
-      const owner = (c.ownerNombre || c.ownerUsuario) ? `${c.ownerNombre || "—"}${c.ownerUsuario ? ` (@${c.ownerUsuario})` : ""}` : "—";
+      const owner = (c.ownerNombre || c.ownerUsuario) ? `${c.ownerNombre || c.ownerUsuario || "—"}` : "—";
       const row = isAdmin
         ? `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td><td style="color:#64748b;font-size:0.82rem;">${owner}</td></tr>`
         : `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td></tr>`;
@@ -2997,6 +3325,11 @@ function cargarClientesFiados() {
     const opts = '<option value="">— Seleccionar —</option>' + clientesFiados.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join("");
     if(document.getElementById("v-fiada-sel")) document.getElementById("v-fiada-sel").innerHTML = opts;
     if(document.getElementById("a-fiada-sel")) document.getElementById("a-fiada-sel").innerHTML = opts;
+    const repOpts = '<option value="">Todos</option>' + clientesFiados.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join("");
+    const vrep = document.getElementById("vfiada-rep-cliente");
+    const arep = document.getElementById("afiada-rep-cliente");
+    if (vrep) vrep.innerHTML = repOpts;
+    if (arep) arep.innerHTML = repOpts;
     _updateClientesFiadosCounters();
     _renderClientesFiadosModal();
   });
