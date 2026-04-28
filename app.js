@@ -3106,6 +3106,15 @@ window.fiadaVerDetalle = async function(prefix, clienteId, clienteNombre) {
   if (tit) tit.textContent = cf.clienteNombre || "—";
   if (sub) sub.textContent = `${_dateToYmd(from)} → ${_dateToYmd(to)}`;
   modal.classList.add("active");
+  try {
+    const m = document.getElementById("fiada-pay-monto");
+    if (m) m.value = "";
+    const n = document.getElementById("fiada-pay-nota");
+    if (n) n.value = "";
+    const msg = document.getElementById("fiada-pay-msg");
+    if (msg) msg.style.display = "none";
+    if (m) setTimeout(() => { try { m.focus(); } catch {} }, 60);
+  } catch {}
   await _fiadaRenderDetalle();
 };
 
@@ -3158,13 +3167,36 @@ async function _fiadaRenderDetalle() {
   `).join("");
 }
 
+function _parseMontoInput(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return NaN;
+  const norm = s.replace(/\s+/g, "").replace(",", ".");
+  const n = Number(norm);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 window.fiadaRegistrarPago = async function() {
   const ctx = _fiadaDetCtx;
   if (!ctx) return;
   const msg = document.getElementById("fiada-pay-msg");
-  const monto = _toNum(document.getElementById("fiada-pay-monto")?.value || 0);
+  const montoEl = document.getElementById("fiada-pay-monto");
+  const monto = _parseMontoInput(montoEl?.value);
   const nota = String(document.getElementById("fiada-pay-nota")?.value || "").trim();
-  if (!Number.isFinite(monto) || monto <= 0) return mostrarMensaje("⚠️ Monto inválido", "warning");
+  if (!Number.isFinite(monto) || monto <= 0) {
+    if (msg) {
+      msg.textContent = "⚠️ Ingresa un monto válido en “Monto S/” (ej: 15 o 15.50)";
+      msg.style.display = "block";
+      msg.style.borderColor = "#f59e0b";
+      msg.style.color = "#92400e";
+      msg.style.background = "#fef3c7";
+    }
+    if (montoEl) {
+      montoEl.style.borderColor = "#f59e0b";
+      setTimeout(() => { try { montoEl.focus(); } catch {} }, 50);
+    }
+    return;
+  }
+  if (montoEl) montoEl.style.borderColor = "";
 
   const s = leerSesion();
   const isVend = rolActual === "vendedor";
