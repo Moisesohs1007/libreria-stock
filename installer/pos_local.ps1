@@ -215,6 +215,8 @@ function Install-WebAssets {
   Download-File "$base/app.js" "$InstallDir\web\app.js"
   Download-File "$base/firebase-config.js" "$InstallDir\web\firebase-config.js"
   Download-File "$base/scanner_utils.js" "$InstallDir\web\scanner_utils.js"
+  Download-File "$base/barcode_lookup.js" "$InstallDir\web\barcode_lookup.js"
+  Download-File "$base/report_export_utils.js" "$InstallDir\web\report_export_utils.js"
 }
 
 function Install-ServerScript {
