@@ -134,6 +134,11 @@
             <option value="">— Selecciona una persona —</option>
           </select>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;">
+          <button onclick="verClientesFiados()" class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;">
+            Ver todos los clientes <span id="v-clientes-fiados-count" style="font-family:'IBM Plex Mono',monospace;"></span>
+          </button>
+        </div>
         <div style="border-top:1px dashed #ccc;margin:12px 0;"></div>
         <label class="fiadas-label">Agregar nuevo cliente</label>
         <div style="display:flex;gap:8px;margin-top:4px;">
@@ -798,6 +803,11 @@
                 <option value="">— Selecciona una persona —</option>
               </select>
             </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;">
+              <button onclick="verClientesFiados()" class="btn btn-info" style="font-size:0.68rem;padding:8px 14px;">
+                Ver todos los clientes <span id="a-clientes-fiados-count" style="font-family:'IBM Plex Mono',monospace;"></span>
+              </button>
+            </div>
             <div style="border-top:1px dashed #ccc;margin:12px 0;"></div>
             <label class="fiadas-label">Agregar nuevo cliente</label>
             <div style="display:flex;gap:8px;margin-top:4px;">
@@ -1249,6 +1259,28 @@
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
       <button onclick="camScanStop()" class="btn" style="background:#eee;flex:1;">Cerrar</button>
       <button onclick="camScanStart()" class="btn btn-primary" style="flex:1;">Reintentar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENTES FIADOS -->
+<div id="modal-clientes-fiados" class="modal-overlay">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div class="card-title" style="margin:0;">Clientes</div>
+      <button onclick="cerrarModal('modal-clientes-fiados')" class="btn" style="background:#eee;">×</button>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input id="clientes-fiados-search" class="input-field" placeholder="Buscar cliente..." style="flex:1;min-width:220px;">
+      <div id="clientes-fiados-total" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#64748b;white-space:nowrap;"></div>
+    </div>
+    <div style="margin-top:10px;overflow:auto;max-height:60vh;">
+      <table class="fiadas-hist-table">
+        <thead id="clientes-fiados-thead"></thead>
+        <tbody id="clientes-fiados-tbody">
+          <tr><td style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

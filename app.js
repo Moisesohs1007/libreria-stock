@@ -1680,8 +1680,8 @@ window.exportarHistorialExcel = function() {
   const to = hasta ? new Date(hasta + "T23:59:59") : null;
   const built = buildVentasExport(todasLasVentas, { from, to });
   const sub = [
-    from ? `Desde: ${from.toISOString().slice(0, 10)}` : "Desde: —",
-    to ? `Hasta: ${to.toISOString().slice(0, 10)}` : "Hasta: —"
+    from ? `Desde: ${_dateToYmd(from)}` : "Desde: —",
+    to ? `Hasta: ${_dateToYmd(to)}` : "Hasta: —"
   ].join("  |  ");
   const wb = _mkReportBook({
     title: "Reporte de ventas",
@@ -1710,8 +1710,8 @@ window.exportarHistorialPDF = function() {
   if (!w) return mostrarMensaje("⚠️ Permite ventanas emergentes", "warning");
   const title = "Reporte de ventas";
   const subtitle = [
-    from ? `Desde: ${from.toISOString().slice(0, 10)}` : "Desde: —",
-    to ? `Hasta: ${to.toISOString().slice(0, 10)}` : "Hasta: —"
+    from ? `Desde: ${_dateToYmd(from)}` : "Desde: —",
+    to ? `Hasta: ${_dateToYmd(to)}` : "Hasta: —"
   ].join("  |  ");
   const head = `<meta charset="utf-8"><title>${title}</title>
     <style>
@@ -1833,14 +1833,14 @@ function _renderCajaAdmin(ahora, ventasHoy, totalHoy) {
       const d = new Date(ahora);
       d.setDate(ahora.getDate() - i);
       d.setHours(0, 0, 0, 0);
-      const k = d.toISOString().slice(0, 10);
+      const k = _dateToYmd(d);
       days.push({ d, k });
     }
     const byDay = new Map(days.map(x => [x.k, { k: x.k, d: x.d, cant: 0, total: 0 }]));
     for (const v of (todasLasVentas || [])) {
       const f = v.fecha?.toDate ? v.fecha.toDate() : new Date(v.fecha);
       const d = new Date(f.getFullYear(), f.getMonth(), f.getDate(), 0, 0, 0, 0);
-      const k = d.toISOString().slice(0, 10);
+      const k = _dateToYmd(d);
       const cur = byDay.get(k);
       if (!cur) continue;
       const cant = _toNum(v.cantidad) || 1;
@@ -2611,7 +2611,16 @@ window.ricohGuardarLecturaManual = async function() {
   const copias = parseInt(document.getElementById("ricoh-man-copias").value) || 0;
   const tipo   = document.getElementById("ricoh-man-tipo").value;
   if (copias <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
-  await addDoc(collection(db, "ricoh_lecturas"), {copias, tipo, fecha: new Date()});
+  const s = leerSesion();
+  await addDoc(collection(db, "ricoh_lecturas"), {
+    copias,
+    tipo,
+    fecha: new Date(),
+    ownerUserId: s?.user_id || "",
+    ownerUsuario: s?.usuario || "",
+    ownerNombre: s?.nombre || "",
+    ownerRol: s?.rol || ""
+  });
   mostrarMensaje("✅ Lectura guardada", "ok");
 };
 
@@ -2742,7 +2751,17 @@ window.ricohRepGuardarManual = async function() {
   const nota = document.getElementById("ricoh-rep-man-nota")?.value || "";
   if (copias <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
   try {
-    await addDoc(collection(db, "ricoh_lecturas"), { copias, tipo, nota, fecha: new Date() });
+    const s = leerSesion();
+    await addDoc(collection(db, "ricoh_lecturas"), {
+      copias,
+      tipo,
+      nota,
+      fecha: new Date(),
+      ownerUserId: s?.user_id || "",
+      ownerUsuario: s?.usuario || "",
+      ownerNombre: s?.nombre || "",
+      ownerRol: s?.rol || ""
+    });
     mostrarMensaje("✅ Registro guardado", "ok");
     const el = document.getElementById("ricoh-rep-man-copias"); if (el) el.value = "";
   } catch {
@@ -2755,6 +2774,7 @@ window.ricohRepGuardarManual = async function() {
 // =============================================
 let clientesFiados = [];
 const FIADA_PRECIO = 0.10;
+let _clientesFiadosModalBound = false;
 
 function _fmtSoles(n) {
   const v = Number(n || 0);
@@ -2814,7 +2834,15 @@ async function _fiadaAddCliente(prefix) {
   const nombre = (input?.value || "").trim();
   if (!nombre) return mostrarMensaje("⚠️ Escribe el nombre del cliente", "warning");
   try {
-    await addDoc(collection(db, "clientesFiados"), { nombre, creadoEn: new Date() });
+    const s = leerSesion();
+    await addDoc(collection(db, "clientesFiados"), {
+      nombre,
+      creadoEn: new Date(),
+      ownerUserId: s?.user_id || "",
+      ownerUsuario: s?.usuario || "",
+      ownerNombre: s?.nombre || "",
+      ownerRol: s?.rol || ""
+    });
     if (input) input.value = "";
     mostrarMensaje("✅ Cliente agregado", "ok");
   } catch {
@@ -2831,7 +2859,20 @@ async function _fiadaGuardar(prefix) {
   const { cara, duplex, carasFisicas, total } = _fiadaCalc(prefix);
   if (carasFisicas <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
   try {
-    await addDoc(collection(db, "copiasFiadas"), { cliente: cli.nombre, cara, duplex, carasFisicas, total, precio: FIADA_PRECIO, fecha: new Date() });
+    const s = leerSesion();
+    await addDoc(collection(db, "copiasFiadas"), {
+      cliente: cli.nombre,
+      cara,
+      duplex,
+      carasFisicas,
+      total,
+      precio: FIADA_PRECIO,
+      fecha: new Date(),
+      ownerUserId: s?.user_id || "",
+      ownerUsuario: s?.usuario || "",
+      ownerNombre: s?.nombre || "",
+      ownerRol: s?.rol || ""
+    });
     const msg = document.getElementById(`${prefix}-fiada-msg`);
     if (msg) {
       msg.textContent = `✅ Guardado: ${cli.nombre} · ${carasFisicas} caras · ${_fmtSoles(total)}`;
@@ -2844,24 +2885,142 @@ async function _fiadaGuardar(prefix) {
     mostrarMensaje("❌ Error guardando fiada", "error");
   }
 }
+
+function _clientesKey(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function _updateClientesFiadosCounters() {
+  const n = Array.isArray(clientesFiados) ? clientesFiados.length : 0;
+  const vEl = document.getElementById("v-clientes-fiados-count");
+  const aEl = document.getElementById("a-clientes-fiados-count");
+  const txt = n ? `(${n})` : "";
+  if (vEl) vEl.textContent = txt;
+  if (aEl) aEl.textContent = txt;
+}
+
+function _renderClientesFiadosModal() {
+  const modal = document.getElementById("modal-clientes-fiados");
+  if (!modal || !modal.classList.contains("active")) return;
+
+  const q = _clientesKey(document.getElementById("clientes-fiados-search")?.value || "");
+  const isAdmin = rolActual === "admin";
+  const list = (Array.isArray(clientesFiados) ? clientesFiados : [])
+    .map(c => ({
+      id: String(c.id || ""),
+      nombre: String(c.nombre || "").trim(),
+      ownerNombre: String(c.ownerNombre || "").trim(),
+      ownerUsuario: String(c.ownerUsuario || "").trim()
+    }))
+    .filter(c => c.id && c.nombre)
+    .filter(c => !q || _clientesKey(c.nombre).includes(q))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+
+  const thead = document.getElementById("clientes-fiados-thead");
+  const tbody = document.getElementById("clientes-fiados-tbody");
+  const total = document.getElementById("clientes-fiados-total");
+  if (total) total.textContent = `${list.length} cliente(s)`;
+
+  if (thead) {
+    thead.innerHTML = isAdmin
+      ? "<tr><th>CLIENTE</th><th>CREADO POR</th></tr>"
+      : "<tr><th>CLIENTE</th></tr>";
+  }
+
+  if (!tbody) return;
+  if (!list.length) {
+    tbody.innerHTML = isAdmin
+      ? `<tr><td colspan="2" style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`
+      : `<tr><td style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list
+    .map(c => {
+      const owner = (c.ownerNombre || c.ownerUsuario) ? `${c.ownerNombre || "—"}${c.ownerUsuario ? ` (@${c.ownerUsuario})` : ""}` : "—";
+      const row = isAdmin
+        ? `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td><td style="color:#64748b;font-size:0.82rem;">${owner}</td></tr>`
+        : `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td></tr>`;
+      return row;
+    })
+    .join("");
+
+  tbody.querySelectorAll("tr[data-id]").forEach(tr => {
+    tr.addEventListener("click", () => {
+      const id = String(tr.getAttribute("data-id") || "");
+      if (!id) return;
+      const selV = document.getElementById("v-fiada-sel");
+      const selA = document.getElementById("a-fiada-sel");
+      const inVendor = (rolActual === "vendedor" && document.getElementById("vendedor-screen")?.style?.display !== "none");
+      const inAdminFiadas = (rolActual === "admin" && document.getElementById("admin-screen")?.style?.display !== "none" && document.getElementById("tab-fiadas")?.classList?.contains("active") === true);
+
+      if (inVendor && selV) {
+        selV.value = id;
+        try { window.vFiadaSeleccionar?.(); } catch {}
+      } else if (inAdminFiadas && selA) {
+        selA.value = id;
+        try { window.aFiadaSeleccionar?.(); } catch {}
+      }
+      cerrarModal("modal-clientes-fiados");
+    });
+  });
+}
+
+window.verClientesFiados = function() {
+  const modal = document.getElementById("modal-clientes-fiados");
+  if (!modal) return;
+  modal.classList.add("active");
+  const inp = document.getElementById("clientes-fiados-search");
+  if (inp) inp.value = "";
+  if (!_clientesFiadosModalBound) {
+    _clientesFiadosModalBound = true;
+    if (inp) {
+      inp.addEventListener("input", () => _renderClientesFiadosModal());
+      inp.addEventListener("keydown", e => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          cerrarModal("modal-clientes-fiados");
+        }
+      });
+    }
+  }
+  _renderClientesFiadosModal();
+  if (inp) setTimeout(() => { try { inp.focus(); } catch {} }, 50);
+};
 function cargarClientesFiados() {
   onSnapshot(collection(db,"clientesFiados"), snap => {
     clientesFiados = snap.docs.map(d => ({id:d.id,...d.data()}));
     const opts = '<option value="">— Seleccionar —</option>' + clientesFiados.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join("");
     if(document.getElementById("v-fiada-sel")) document.getElementById("v-fiada-sel").innerHTML = opts;
     if(document.getElementById("a-fiada-sel")) document.getElementById("a-fiada-sel").innerHTML = opts;
+    _updateClientesFiadosCounters();
+    _renderClientesFiadosModal();
   });
 }
 
+
 function cargarFiadasDia() {
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  onSnapshot(collection(db,"copiasFiadas"), snap => {
+  const s = leerSesion();
+  const isV = (rolActual === "vendedor");
+  const uid = String(s?.user_id || "");
+  if (isV && !uid) {
+    mostrarMensaje("⚠️ Sesión incompleta. Vuelve a ingresar.", "warning");
+  }
+  const qy = isV
+    ? query(collection(db,"copiasFiadas"), where("ownerUserId","==", uid || "__missing__"), where("fecha", ">=", hoy))
+    : query(collection(db,"copiasFiadas"), where("fecha", ">=", hoy));
+  onSnapshot(qy, snap => {
     const fiadas = snap.docs.map(d=>d.data()).filter(f=>(f.fecha?.toDate ? f.fecha.toDate() : new Date(f.fecha)) >= hoy);
-    const total = fiadas.reduce((s,f)=> {
+    const total = fiadas.reduce((acc,f)=> {
       const cara = _toInt(f.cara);
       const duplex = _toInt(f.duplex);
       const carasFisicas = _toInt(f.carasFisicas) || (cara + duplex * 2);
-      return s + (carasFisicas * FIADA_PRECIO);
+      return acc + (carasFisicas * FIADA_PRECIO);
     },0);
     if(document.getElementById("a-fiada-total-dia")) document.getElementById("a-fiada-total-dia").textContent = "S/ "+total.toFixed(2);
   });
@@ -2892,7 +3051,15 @@ window.vMalGuardar = async function() {
   const cant = parseInt(document.getElementById("v-mal-cant")?.value || "0", 10) || 0;
   if (cant <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
   try {
-    await addDoc(collection(db, "hojasMalogradas"), { cantidad: cant, fecha: new Date() });
+    const s = leerSesion();
+    await addDoc(collection(db, "hojasMalogradas"), {
+      cantidad: cant,
+      fecha: new Date(),
+      ownerUserId: s?.user_id || "",
+      ownerUsuario: s?.usuario || "",
+      ownerNombre: s?.nombre || "",
+      ownerRol: s?.rol || ""
+    });
     const el = document.getElementById("v-mal-cant"); if (el) el.value = "0";
     const msg = document.getElementById("v-mal-msg");
     if (msg) {
@@ -2909,7 +3076,15 @@ window.vMalGuardar = async function() {
 window.aMalGuardar = async function() {
   const cant = parseInt(document.getElementById("a-mal-cant").value) || 0;
   if(cant <= 0) return;
-  await addDoc(collection(db,"hojasMalogradas"), {cantidad:cant, fecha:new Date()});
+  const s = leerSesion();
+  await addDoc(collection(db,"hojasMalogradas"), {
+    cantidad: cant,
+    fecha: new Date(),
+    ownerUserId: s?.user_id || "",
+    ownerUsuario: s?.usuario || "",
+    ownerNombre: s?.nombre || "",
+    ownerRol: s?.rol || ""
+  });
   mostrarMensaje("⚠️ Malograda registrada","warning");
 };
 
@@ -2952,7 +3127,13 @@ async function _generarReporte(prefix) {
   if (!r) return mostrarMensaje("⚠️ Selecciona día o rango", "warning");
   const { from, to, title } = r;
   try {
-    const qFiadas = query(collection(db, "copiasFiadas"), where("fecha", ">=", from), where("fecha", "<=", to));
+    const s = leerSesion();
+    const isVendedor = (prefix === "v" && rolActual === "vendedor");
+    const uid = String(s?.user_id || "");
+    if (isVendedor && !uid) return mostrarMensaje("⚠️ Sesión incompleta. Vuelve a ingresar.", "warning");
+    const qFiadas = isVendedor
+      ? query(collection(db, "copiasFiadas"), where("ownerUserId","==", uid || "__missing__"), where("fecha", ">=", from), where("fecha", "<=", to))
+      : query(collection(db, "copiasFiadas"), where("fecha", ">=", from), where("fecha", "<=", to));
     const sFiadas = await getDocs(qFiadas);
     const rows = sFiadas.docs.map(d => d.data());
 
@@ -2973,7 +3154,9 @@ async function _generarReporte(prefix) {
       byCliente.set(cliente, cur);
     }
 
-    const qMal = query(collection(db, "hojasMalogradas"), where("fecha", ">=", from), where("fecha", "<=", to));
+    const qMal = isVendedor
+      ? query(collection(db, "hojasMalogradas"), where("ownerUserId","==", uid || "__missing__"), where("fecha", ">=", from), where("fecha", "<=", to))
+      : query(collection(db, "hojasMalogradas"), where("fecha", ">=", from), where("fecha", "<=", to));
     const sMal = await getDocs(qMal);
     const mal = sMal.docs.map(d => d.data()).reduce((s, x) => s + _toInt(x.cantidad), 0);
 
@@ -3981,7 +4164,11 @@ function _gananciasCompute(filters) {
   const byCode = new Map();
   const series = new Map();
   for (const v of ventas) {
-    const p = _productoIndex?.get?.(sanitizeScanCode(v?.codigo || "")) || (todosLosProductos || []).find(x => x?.codigo === v?.codigo) || null;
+    const vcode = sanitizeScanCode(v?.codigo || "");
+    const p =
+      (vcode && _productoIndex?.get?.(vcode)) ||
+      (todosLosProductos || []).find(x => sanitizeScanCode(x?.codigo || "") === vcode) ||
+      null;
     const pc = String(p?.categoria || "").trim();
     const pv = String(p?.proveedor || "").trim();
     if (categoria && pc !== categoria) continue;
@@ -3996,7 +4183,7 @@ function _gananciasCompute(filters) {
     cur.utilidad = cur.ingresos - cur.costos;
     byCode.set(code, cur);
     const d = _tsToDate(v?.fecha) || new Date();
-    const k = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
+    const k = _dateToYmd(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0));
     const s = series.get(k) || { k, ingresos: 0, costos: 0, utilidad: 0 };
     s.ingresos += ln.net;
     s.costos += ln.costo;
@@ -4050,10 +4237,12 @@ function _movRangeFromUi() {
     const d = _parseDateOnly(inpDesde?.value || "");
     const h = _endOfDay(_parseDateOnly(inpHasta?.value || ""));
     if (d && h) { from = d; to = h; }
+    else if (d && !h) { from = d; to = _endOfDay(d); }
+    else if (!d && h) { from = _parseDateOnly(inpHasta?.value || ""); to = h; }
     if (!from || !to) {
       const n = new Date();
-      from = new Date(n.getFullYear(), n.getMonth(), 1, 0, 0, 0, 0);
-      to = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59, 999);
+      from = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0);
+      to = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
     }
   }
   if (inpDesde) inpDesde.value = _dateToYmd(from);
@@ -4363,8 +4552,8 @@ window.movExportarExcel = function() {
   const r = _movRangeFromUi();
   const built = buildMovimientosExport(todosLosMovimientos, { from: r?.from || null, to: r?.to || null });
   const sub = [
-    r?.from ? `Desde: ${r.from.toISOString().slice(0, 10)}` : "Desde: —",
-    r?.to ? `Hasta: ${r.to.toISOString().slice(0, 10)}` : "Hasta: —"
+    r?.from ? `Desde: ${_dateToYmd(r.from)}` : "Desde: —",
+    r?.to ? `Hasta: ${_dateToYmd(r.to)}` : "Hasta: —"
   ].join("  |  ");
   const wb = _mkReportBook({
     title: "Reporte de movimientos (ingresos/egresos)",
@@ -4454,8 +4643,8 @@ window.gananciasExportarExcel = function() {
     Margen: r.ingresos > 0 ? (r.utilidad / r.ingresos) : 0,
   }));
   const sub = [
-    filtros.desde ? `Desde: ${filtros.desde.toISOString().slice(0, 10)}` : "Desde: —",
-    filtros.hasta ? `Hasta: ${filtros.hasta.toISOString().slice(0, 10)}` : "Hasta: —",
+    filtros.desde ? `Desde: ${_dateToYmd(filtros.desde)}` : "Desde: —",
+    filtros.hasta ? `Hasta: ${_dateToYmd(filtros.hasta)}` : "Hasta: —",
     `Categoría: ${filtros.categoria || "Todas"}`,
     `Proveedor: ${filtros.proveedor || "Todos"}`
   ].join("  |  ");
@@ -4501,8 +4690,8 @@ window.gananciasExportarPDF = function() {
   if (!w) return mostrarMensaje("⚠️ Permite ventanas emergentes", "warning");
   const title = "Análisis de ganancias";
   const sub = [
-    filtros.desde ? `Desde: ${filtros.desde.toISOString().slice(0,10)}` : "Desde: —",
-    filtros.hasta ? `Hasta: ${filtros.hasta.toISOString().slice(0,10)}` : "Hasta: —",
+    filtros.desde ? `Desde: ${_dateToYmd(filtros.desde)}` : "Desde: —",
+    filtros.hasta ? `Hasta: ${_dateToYmd(filtros.hasta)}` : "Hasta: —",
     `Categoría: ${filtros.categoria || "Todas"}`,
     `Proveedor: ${filtros.proveedor || "Todos"}`
   ].join("  |  ");
