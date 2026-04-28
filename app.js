@@ -2988,6 +2988,20 @@ function _fiadaRowToLine(f) {
   return { cara, duplex, carasFisicas, monto, fecha, clienteId, clienteNombre };
 }
 
+function _isFirestoreIndexError(e) {
+  const msg = String(e?.message || e || "");
+  const code = String(e?.code || "");
+  if (code === "failed-precondition") return true;
+  return msg.toLowerCase().includes("requires an index") || msg.toLowerCase().includes("create it here");
+}
+
+function _inRangeDate(d, from, to) {
+  if (!(d instanceof Date) || !Number.isFinite(d.getTime())) return false;
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
 async function _fiadaFetchFiadas(prefix, from, to) {
   const s = leerSesion();
   const uid = String(s?.user_id || "");
@@ -3004,8 +3018,25 @@ async function _fiadaFetchFiadas(prefix, from, to) {
   if (isVend) constraints.unshift(where("ownerUserId", "==", uid));
   else if (prefix === "a" && adminOwner) constraints.unshift(where("ownerUserId", "==", adminOwner));
   const qy = query(collection(db, "copiasFiadas"), ...constraints);
-  const snap = await getDocs(qy);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  try {
+    const snap = await getDocs(qy);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    const canFallback = isVend || (prefix === "a" && !!adminOwner);
+    if (_isFirestoreIndexError(e) && canFallback) {
+      const owner = isVend ? uid : adminOwner;
+      try {
+        const snap2 = await getDocs(query(collection(db, "copiasFiadas"), where("ownerUserId", "==", owner)));
+        const arr = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+        return arr.filter(x => _inRangeDate(_tsToDate(x?.fecha) || _tsToDate(x?.creadoEn), from, to));
+      } catch (e2) {
+        mostrarMensaje("❌ No se pudo cargar fiadas (índice)", "error");
+        throw e2;
+      }
+    }
+    mostrarMensaje(`❌ Error cargando fiadas: ${String(e?.message || e)}`, "error");
+    throw e;
+  }
 }
 
 async function _fiadaFetchPagos(prefix, from, to) {
@@ -3021,8 +3052,25 @@ async function _fiadaFetchPagos(prefix, from, to) {
   if (isVend) constraints.unshift(where("targetOwnerUserId", "==", uid));
   else if (prefix === "a" && adminOwner) constraints.unshift(where("targetOwnerUserId", "==", adminOwner));
   const qy = query(collection(db, _FIADA_PAGOS_COL), ...constraints);
-  const snap = await getDocs(qy);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  try {
+    const snap = await getDocs(qy);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    const canFallback = isVend || (prefix === "a" && !!adminOwner);
+    if (_isFirestoreIndexError(e) && canFallback) {
+      const owner = isVend ? uid : adminOwner;
+      try {
+        const snap2 = await getDocs(query(collection(db, _FIADA_PAGOS_COL), where("targetOwnerUserId", "==", owner)));
+        const arr = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+        return arr.filter(x => _inRangeDate(_tsToDate(x?.fecha) || _tsToDate(x?.creadoEn), from, to));
+      } catch (e2) {
+        mostrarMensaje("❌ No se pudo cargar pagos (índice)", "error");
+        throw e2;
+      }
+    }
+    mostrarMensaje(`❌ Error cargando pagos: ${String(e?.message || e)}`, "error");
+    throw e;
+  }
 }
 
 function _fiadaClientMatches(line, clienteId, clienteNombre) {
@@ -3090,20 +3138,33 @@ async function _fiadaReporte(prefix) {
   const isAdmin = prefix === "a";
   const vend = _fiadaVendorFilter(prefix).ownerUserId;
   const vendName = vend ? (todosLosVendedores || []).find(x => String(x.id || "") === vend)?.nombre : "";
-  if (isAdmin && !vend) {
-    const subTxt = `Vendedor: Todos · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+  const tbody = document.getElementById(isAdmin ? "afiada-rep-tbody" : "vfiada-rep-tbody");
+  const sub = document.getElementById(isAdmin ? "afiada-rep-sub" : "vfiada-rep-sub");
+  if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Cargando...</td></tr>`;
+  try {
+    if (isAdmin && !vend) {
+      const subTxt = `Vendedor: Todos · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+      if (sub) sub.textContent = subTxt;
+      const fiadas = await _fiadaFetchFiadas(prefix, from, to);
+      const pagos = await _fiadaFetchPagos(prefix, from, to);
+      const rows = _fiadaAggByClient(fiadas, pagos, clienteId, clienteNombre);
+      _fiadaRenderResumen(prefix, rows, subTxt);
+      if (!rows.length) mostrarMensaje("ℹ️ Sin datos en el rango", "warning");
+      return;
+    }
+    const who = isAdmin ? `Vendedor: ${vendName || "Seleccionado"}` : "Vendedor";
+    const subTxt = `${who} · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
+    if (sub) sub.textContent = subTxt;
     const fiadas = await _fiadaFetchFiadas(prefix, from, to);
     const pagos = await _fiadaFetchPagos(prefix, from, to);
     const rows = _fiadaAggByClient(fiadas, pagos, clienteId, clienteNombre);
     _fiadaRenderResumen(prefix, rows, subTxt);
-    return;
+    if (!rows.length) mostrarMensaje("ℹ️ Sin datos en el rango", "warning");
+  } catch (e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Sin datos</td></tr>`;
+    const msg = String(e?.message || e);
+    mostrarMensaje(`❌ No se pudo generar reporte: ${msg}`, "error");
   }
-  const who = isAdmin ? `Vendedor: ${vendName || "Seleccionado"}` : "Vendedor";
-  const subTxt = `${who} · ${_dateToYmd(from)} → ${_dateToYmd(to)}`;
-  const fiadas = await _fiadaFetchFiadas(prefix, from, to);
-  const pagos = await _fiadaFetchPagos(prefix, from, to);
-  const rows = _fiadaAggByClient(fiadas, pagos, clienteId, clienteNombre);
-  _fiadaRenderResumen(prefix, rows, subTxt);
 }
 
 window.vFiadaRepVer = function() { return _fiadaReporte("v"); };
