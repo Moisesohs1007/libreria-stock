@@ -2523,35 +2523,49 @@ document.addEventListener("input", e => {
 }, true);
 
 // =============================================
-// RICOH MP5055 INTEGRACIÓN
+// FOTOCOPIADORAS — MÚLTIPLES DISPOSITIVOS
 // =============================================
-let ricohConfig = { ip: "", port: "3001", community: "public" };
-let ricohMonitorInterval = null;
-let ricohBaseTotal = null;
-let ricohLastTotal = null;
-let ricohHistorialData = [];
+let fotocopiadoras = [];
+let fotocopiadoraSeleccionadaId = null;
 
 // Cargar config guardada
 (function() {
   try {
-    const saved = localStorage.getItem("ricoh_config");
-    if (saved) ricohConfig = {...ricohConfig, ...JSON.parse(saved)};
-    if (ricohConfig.ip && document.getElementById("ricoh-ip")) document.getElementById("ricoh-ip").value = ricohConfig.ip;
-    if (ricohConfig.port && document.getElementById("ricoh-proxy-port")) document.getElementById("ricoh-proxy-port").value = ricohConfig.port;
-    if (ricohConfig.community && document.getElementById("ricoh-community")) document.getElementById("ricoh-community").value = ricohConfig.community;
-  } catch(e) {}
+    const saved = localStorage.getItem("fotocopiadoras");
+    if (saved) fotocopiadoras = JSON.parse(saved);
+    if (fotocopiadoras.length === 0) {
+      // Agregar una Ricoh MP5055 por defecto para mantener compatibilidad
+      fotocopiadoras.push({
+        id: "ricoh-mp5055-1",
+        nombre: "Ricoh MP5055",
+        ip: "",
+        port: "3001",
+        community: "public",
+        baseTotal: null,
+        lastTotal: null,
+        historial: [],
+        monitorInterval: null,
+        oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+        oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
+      });
+    }
+    fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
+    renderFotocopiadorasUI();
+  } catch(e) {
+    console.error("Error cargando fotocopiadoras:", e);
+  }
 })();
 
-window.ricohGuardarConfig = function() {
-  ricohConfig.ip        = document.getElementById("ricoh-ip").value.trim();
-  ricohConfig.port      = document.getElementById("ricoh-proxy-port").value.trim() || "3001";
-  ricohConfig.community = document.getElementById("ricoh-community").value.trim() || "public";
-  localStorage.setItem("ricoh_config", JSON.stringify(ricohConfig));
-  mostrarMensaje("✅ Configuración Ricoh guardada","ok");
-};
+function guardarFotocopiadoras() {
+  localStorage.setItem("fotocopiadoras", JSON.stringify(fotocopiadoras));
+}
 
-async function ricohSnmpGet(oid) {
-  const { ip, port, community } = ricohConfig;
+function obtenerFotocopiadora(id) {
+  return fotocopiadoras.find(f => f.id === id);
+}
+
+async function fotocopiadoraSnmpGet(fotocopiadora, oid) {
+  const { ip, port, community } = fotocopiadora;
   if (!ip) throw new Error("IP no configurada");
   const url = `http://localhost:${port}/snmp?ip=${encodeURIComponent(ip)}&community=${encodeURIComponent(community)}&oid=${encodeURIComponent(oid)}`;
   const resp = await fetch(url, { signal: _timeoutSignal(5000) });
@@ -2559,107 +2573,282 @@ async function ricohSnmpGet(oid) {
   return data.value;
 }
 
-window.ricohConectar = async function() {
-  window.ricohGuardarConfig();
+function renderFotocopiadorasUI() {
+  const selector = document.getElementById("fotocopiadora-selector");
+  const selectorReporte = document.getElementById("fotocopiadora-selector-reporte");
+  const lista = document.getElementById("fotocopiadoras-lista");
+
+  // Renderizar selector para reporte
+  if (selectorReporte) {
+    selectorReporte.innerHTML = fotocopiadoras.map(f => 
+      `<option value="${f.id}" ${f.id === fotocopiadoraSeleccionadaId ? "selected" : ""}>${f.nombre}</option>`
+    ).join("");
+  }
+
+  const nombreReporte = document.getElementById("ricoh-rep-nombre");
+  if (nombreReporte) {
+    const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+    if (f) nombreReporte.textContent = f.nombre;
+  }
+
+  // Renderizar selector
+  if (selector) {
+    selector.innerHTML = fotocopiadoras.map(f => 
+      `<option value="${f.id}" ${f.id === fotocopiadoraSeleccionadaId ? "selected" : ""}>${f.nombre}</option>`
+    ).join("");
+  }
+
+  // Renderizar lista de dispositivos
+  if (lista) {
+    lista.innerHTML = fotocopiadoras.map(f => {
+      const isSelected = f.id === fotocopiadoraSeleccionadaId;
+      return `
+        <div class="card" style="margin-bottom:12px;border:${isSelected ? "3px solid #4ade80" : "2px solid var(--border)"};">
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>${f.nombre}</span>
+            <div style="display:flex;gap:8px;">
+              <button onclick="seleccionarFotocopiadora('${f.id}')" class="btn" style="background:${isSelected ? "#4ade80" : "#eee"};font-size:0.7rem;padding:6px 10px;">
+                ${isSelected ? "✅ Seleccionado" : "Seleccionar"}
+              </button>
+              <button onclick="eliminarFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.7rem;padding:6px 10px;">
+                Eliminar
+              </button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <label class="input-label">IP</label>
+              <input class="input-field" placeholder="192.168.1.100" value="${f.ip}" onchange="actualizarFotocopiadora('${f.id}', 'ip', this.value)">
+            </div>
+            <div>
+              <label class="input-label">Puerto Proxy</label>
+              <input class="input-field" placeholder="3001" value="${f.port}" onchange="actualizarFotocopiadora('${f.id}', 'port', this.value)">
+            </div>
+            <div>
+              <label class="input-label">Comunidad SNMP</label>
+              <input class="input-field" placeholder="public" value="${f.community}" onchange="actualizarFotocopiadora('${f.id}', 'community', this.value)">
+            </div>
+            <div>
+              <label class="input-label">OID Total</label>
+              <input class="input-field" placeholder="OID..." value="${f.oidTotal}" onchange="actualizarFotocopiadora('${f.id}', 'oidTotal', this.value)">
+            </div>
+            <div style="grid-column:span 2;">
+              <label class="input-label">OID B/N</label>
+              <input class="input-field" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Renderizar monitor del dispositivo seleccionado
+  renderFotocopiadoraMonitorUI();
+}
+
+function renderFotocopiadoraMonitorUI() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (!f) return;
+
+  // Configurar inputs de la vieja UI para compatibilidad
+  if (document.getElementById("ricoh-ip")) document.getElementById("ricoh-ip").value = f.ip;
+  if (document.getElementById("ricoh-proxy-port")) document.getElementById("ricoh-proxy-port").value = f.port;
+  if (document.getElementById("ricoh-community")) document.getElementById("ricoh-community").value = f.community;
+  if (document.getElementById("ricoh-model-lbl")) document.getElementById("ricoh-model-lbl").textContent = f.nombre;
+
+  // Actualizar monitor
+  if (document.getElementById("ricoh-total")) document.getElementById("ricoh-total").textContent = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
+  if (document.getElementById("ricoh-bw")) document.getElementById("ricoh-bw").textContent = f.lastTotal ? (f.lastTotal - (f.baseTotal || 0)).toLocaleString() : "—";
+  if (document.getElementById("ricoh-sesion")) document.getElementById("ricoh-sesion").textContent = f.baseTotal ? (f.lastTotal - f.baseTotal).toLocaleString() : "0";
+  if (document.getElementById("ricoh-ultima")) document.getElementById("ricoh-ultima").textContent = f.historial[0]?.hora || "—";
+
+  // Historial
+  const tbody = document.getElementById("ricoh-historial");
+  if (tbody) {
+    if (!f.historial.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin lecturas aún — inicia el monitor</td></tr>`;
+    } else {
+      tbody.innerHTML = f.historial.slice(0, 50).map(r => `
+        <tr>
+          <td>${r.hora}</td>
+          <td class="mono">${r.total}</td>
+          <td class="mono" style="color:var(--accent);">+${r.delta}</td>
+          <td class="mono">${r.bw}</td>
+          <td>${r.estado}</td>
+        </tr>
+      `).join("");
+    }
+  }
+
+  // Estado del monitor
+  if (document.getElementById("btn-ricoh-start")) document.getElementById("btn-ricoh-start").style.display = f.monitorInterval ? "none" : "inline-flex";
+  if (document.getElementById("btn-ricoh-stop")) document.getElementById("btn-ricoh-stop").style.display = f.monitorInterval ? "inline-flex" : "none";
+  if (document.getElementById("ricoh-estado")) document.getElementById("ricoh-estado").textContent = f.monitorInterval ? "activo" : "detenido";
+}
+
+function seleccionarFotocopiadora(id) {
+  fotocopiadoraSeleccionadaId = id;
+  renderFotocopiadorasUI();
+}
+
+function actualizarFotocopiadora(id, campo, valor) {
+  const f = obtenerFotocopiadora(id);
+  if (f) {
+    f[campo] = valor;
+    guardarFotocopiadoras();
+    if (id === fotocopiadoraSeleccionadaId) renderFotocopiadoraMonitorUI();
+  }
+}
+
+window.agregarFotocopiadora = function() {
+  const nombre = prompt("Nombre de la nueva fotocopiadora:");
+  if (!nombre) return;
+
+  const nueva = {
+    id: "fotocopiadora-" + Date.now(),
+    nombre: nombre,
+    ip: "",
+    port: "3001",
+    community: "public",
+    baseTotal: null,
+    lastTotal: null,
+    historial: [],
+    monitorInterval: null,
+    oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+    oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
+  };
+  fotocopiadoras.push(nueva);
+  guardarFotocopiadoras();
+  fotocopiadoraSeleccionadaId = nueva.id;
+  renderFotocopiadorasUI();
+  mostrarMensaje("✅ Fotocopiadora agregada", "ok");
+};
+
+window.cambiarFotocopiadoraReporte = function(id) {
+  fotocopiadoraSeleccionadaId = id;
+  ricohRepHistorialData = [];
+  ricohRepBaseTotal = null;
+  ricohRepLastTotal = null;
+  renderFotocopiadorasUI();
+  renderRicohRepHistorial();
+};
+
+window.eliminarFotocopiadora = function(id) {
+  if (!confirm("¿Seguro que quieres eliminar esta fotocopiadora?")) return;
+  const f = obtenerFotocopiadora(id);
+  if (f && f.monitorInterval) clearInterval(f.monitorInterval);
+  fotocopiadoras = fotocopiadoras.filter(f => f.id !== id);
+  if (fotocopiadoraSeleccionadaId === id && fotocopiadoras.length > 0) {
+    fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
+  }
+  guardarFotocopiadoras();
+  renderFotocopiadorasUI();
+};
+
+window.fotocopiadoraConectar = async function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (!f) return;
   try {
-    const total = await ricohSnmpGet("1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1");
-    const bw    = await ricohSnmpGet("1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14");
-    document.getElementById("ricoh-total").textContent = parseInt(total).toLocaleString();
-    document.getElementById("ricoh-bw").textContent    = parseInt(bw).toLocaleString();
-    document.getElementById("ricoh-dot").style.background = "#4ade80";
-    mostrarMensaje("✅ Conectado a Ricoh","ok");
+    const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
+    const bw    = await fotocopiadoraSnmpGet(f, f.oidBw);
+    f.lastTotal = parseInt(total);
+    const dot = document.getElementById("ricoh-dot");
+    if (dot) dot.style.background = "#4ade80";
+    renderFotocopiadoraMonitorUI();
+    mostrarMensaje("✅ Conectado a " + f.nombre, "ok");
     return {total: parseInt(total), bw: parseInt(bw)};
-  } catch(e) { 
-    document.getElementById("ricoh-dot").style.background = "#f87171";
-    mostrarMensaje("❌ Error conexión Ricoh","error"); 
+  } catch(e) {
+    const dot = document.getElementById("ricoh-dot");
+    if (dot) dot.style.background = "#f87171";
+    mostrarMensaje("❌ Error conexión a " + f.nombre, "error");
   }
 };
 
-window.ricohIniciarMonitor = function() {
-  if(ricohMonitorInterval) return;
+window.fotocopiadoraIniciarMonitor = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (!f || f.monitorInterval) return;
+
   const poll = async () => {
-    const data = await window.ricohConectar();
+    const data = await window.fotocopiadoraConectar();
     if (data) {
       const now = new Date().toLocaleTimeString();
-      if (ricohBaseTotal === null) ricohBaseTotal = data.total;
-      const delta = data.total - (ricohLastTotal !== null ? ricohLastTotal : data.total);
-      ricohLastTotal = data.total;
-      const sesion = data.total - ricohBaseTotal;
-      document.getElementById("ricoh-sesion").textContent = sesion;
-      document.getElementById("ricoh-ultima").textContent = now;
+      if (f.baseTotal === null) f.baseTotal = data.total;
+      const delta = data.total - (f.lastTotal !== null ? f.lastTotal : data.total);
+      f.lastTotal = data.total;
       if (delta > 0) {
-        ricohHistorialData.unshift({hora: now, total: data.total, delta, bw: data.bw, estado: "OK"});
-        renderRicohHistorial();
+        f.historial.unshift({hora: now, total: data.total, delta, bw: data.bw, estado: "OK"});
+        guardarFotocopiadoras();
       }
+      renderFotocopiadoraMonitorUI();
     }
   };
   poll();
-  ricohMonitorInterval = setInterval(poll, 10000);
-  document.getElementById("btn-ricoh-start").style.display = "none";
-  document.getElementById("btn-ricoh-stop").style.display = "inline-flex";
-  document.getElementById("ricoh-estado").textContent = "activo";
+  f.monitorInterval = setInterval(poll, 10000);
+  renderFotocopiadoraMonitorUI();
 };
 
-window.ricohDetenerMonitor = function() {
-  clearInterval(ricohMonitorInterval); ricohMonitorInterval = null;
-  document.getElementById("btn-ricoh-start").style.display = "inline-flex";
-  document.getElementById("btn-ricoh-stop").style.display = "none";
-  document.getElementById("ricoh-estado").textContent = "detenido";
+window.fotocopiadoraDetenerMonitor = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (f && f.monitorInterval) {
+    clearInterval(f.monitorInterval);
+    f.monitorInterval = null;
+    renderFotocopiadoraMonitorUI();
+  }
 };
 
-function renderRicohHistorial() {
-  const tbody = document.getElementById("ricoh-historial");
-  if (!tbody) return;
-  tbody.innerHTML = ricohHistorialData.slice(0, 50).map(f => `
-    <tr>
-      <td>${f.hora}</td>
-      <td class="mono">${f.total}</td>
-      <td class="mono" style="color:var(--accent);">+${f.delta}</td>
-      <td class="mono">${f.bw}</td>
-      <td>${f.estado}</td>
-    </tr>`).join("");
-}
-
-window.ricohReiniciarSesion = function() {
-  ricohBaseTotal = ricohLastTotal;
-  document.getElementById("ricoh-sesion").textContent = "0";
-  mostrarMensaje("↺ Sesión reiniciada","ok");
+window.fotocopiadoraReiniciarSesion = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (f) {
+    f.baseTotal = f.lastTotal;
+    guardarFotocopiadoras();
+    renderFotocopiadoraMonitorUI();
+    mostrarMensaje("↺ Sesión reiniciada", "ok");
+  }
 };
 
-window.ricohLimpiarHistorial = function() {
-  ricohHistorialData = []; renderRicohHistorial();
+window.fotocopiadoraLimpiarHistorial = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (f) {
+    f.historial = [];
+    guardarFotocopiadoras();
+    renderFotocopiadoraMonitorUI();
+  }
 };
 
-window.ricohExportarHistorial = function() {
-  const ws = XLSX.utils.json_to_sheet(ricohHistorialData);
+window.fotocopiadoraExportarHistorial = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (!f || !f.historial.length) return mostrarMensaje("⚠️ Sin datos para exportar", "warning");
+  const ws = XLSX.utils.json_to_sheet(f.historial);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Ricoh");
-  XLSX.writeFile(wb, "ricoh_historial.xlsx");
-};
-
-window.ricohGuardarLecturaManual = async function() {
-  const copias = parseInt(document.getElementById("ricoh-man-copias").value) || 0;
-  const tipo   = document.getElementById("ricoh-man-tipo").value;
-  if (copias <= 0) return mostrarMensaje("⚠️ Cantidad inválida", "warning");
-  const s = leerSesion();
-  await addDoc(collection(db, "ricoh_lecturas"), {
-    copias,
-    tipo,
-    fecha: new Date(),
-    ownerUserId: s?.user_id || "",
-    ownerUsuario: s?.usuario || "",
-    ownerNombre: s?.nombre || "",
-    ownerRol: s?.rol || ""
-  });
-  mostrarMensaje("✅ Lectura guardada", "ok");
+  XLSX.utils.book_append_sheet(wb, ws, f.nombre.replace(/[^a-zA-Z0-9]/g, "_"));
+  XLSX.writeFile(wb, `${f.nombre.replace(/[^a-zA-Z0-9]/g, "_")}_historial.xlsx`);
 };
 
 window.ricohDescargarProxy = function() {
   const script = `const express = require('express'); const snmp = require('net-snmp'); const cors = require('cors'); const app = express(); app.use(cors()); app.get('/snmp', (req, res) => { const { ip, community = 'public', oid } = req.query; const session = snmp.createSession(ip, community); session.get([oid], (err, varbinds) => { session.close(); if (err) return res.status(500).json({ error: err.message }); res.json({ value: varbinds[0].value.toString() }); }); }); app.listen(3001, () => console.log('Proxy OK en 3001'));`;
   const blob = new Blob([script], { type: "text/javascript" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "proxy-ricoh.js"; a.click();
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "proxy-fotocopiadora.js"; a.click();
 };
 
+// Funciones de compatibilidad (para mantener la vieja UI funcionando)
+window.ricohGuardarConfig = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (f) {
+    f.ip = document.getElementById("ricoh-ip")?.value.trim() || "";
+    f.port = document.getElementById("ricoh-proxy-port")?.value.trim() || "3001";
+    f.community = document.getElementById("ricoh-community")?.value.trim() || "public";
+    guardarFotocopiadoras();
+    mostrarMensaje("✅ Configuración guardada", "ok");
+  }
+};
+window.ricohConectar = window.fotocopiadoraConectar;
+window.ricohIniciarMonitor = window.fotocopiadoraIniciarMonitor;
+window.ricohDetenerMonitor = window.fotocopiadoraDetenerMonitor;
+window.ricohReiniciarSesion = window.fotocopiadoraReiniciarSesion;
+window.ricohLimpiarHistorial = window.fotocopiadoraLimpiarHistorial;
+window.ricohExportarHistorial = window.fotocopiadoraExportarHistorial;
+
+// TODO: Adaptar ricohRep* functions para múltiples fotocopiadoras (por ahora mantenemos compatibilidad)
 let ricohRepMonitorInterval = null;
 let ricohRepBaseTotal = null;
 let ricohRepLastTotal = null;
@@ -2679,10 +2868,10 @@ function renderRicohRepBanner(ok, text) {
 }
 
 async function ricohRepLeer() {
-  const { ip } = ricohConfig;
-  if (!ip) throw new Error("IP no configurada");
-  const total = await ricohSnmpGet("1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1");
-  const bw    = await ricohSnmpGet("1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14");
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (!f || !f.ip) throw new Error("IP no configurada");
+  const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
+  const bw    = await fotocopiadoraSnmpGet(f, f.oidBw);
   return { total: parseInt(total, 10), bw: parseInt(bw, 10) };
 }
 
@@ -2768,14 +2957,17 @@ window.ricohRepLimpiar = function() {
 };
 
 window.ricohRepExportar = function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
   if (!ricohRepHistorialData.length) return mostrarMensaje("⚠️ Sin datos para exportar", "warning");
   const ws = XLSX.utils.json_to_sheet(ricohRepHistorialData);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Ricoh");
-  XLSX.writeFile(wb, "ricoh_reporte.xlsx");
+  const nombreHoja = f ? f.nombre.replace(/[^a-zA-Z0-9]/g, "_") : "Ricoh";
+  XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+  XLSX.writeFile(wb, `${nombreHoja}_reporte.xlsx`);
 };
 
 window.ricohRepGuardarManual = async function() {
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
   const copias = parseInt(document.getElementById("ricoh-rep-man-copias")?.value || "0", 10) || 0;
   const tipo = document.getElementById("ricoh-rep-man-tipo")?.value || "bw";
   const nota = document.getElementById("ricoh-rep-man-nota")?.value || "";
@@ -2786,6 +2978,8 @@ window.ricohRepGuardarManual = async function() {
       copias,
       tipo,
       nota,
+      fotocopiadoraId: f?.id || "",
+      fotocopiadoraNombre: f?.nombre || "",
       fecha: new Date(),
       ownerUserId: s?.user_id || "",
       ownerUsuario: s?.usuario || "",
@@ -2798,6 +2992,8 @@ window.ricohRepGuardarManual = async function() {
     mostrarMensaje("❌ Error guardando registro", "error");
   }
 };
+
+window.ricohGuardarLecturaManual = window.ricohRepGuardarManual;
 
 // =============================================
 // COPIAS FIADAS
