@@ -1630,6 +1630,16 @@ window.eliminarProducto = async function(id, nombre){
   }
 };
 
+window.eliminarCliente = async function(id, nombre){
+  if(!confirm(`¿Estás seguro de eliminar el cliente "${nombre}"?`)) return;
+  try {
+    await deleteDoc(doc(db, "clientesFiados", id));
+    mostrarMensaje(`🗑 Cliente "${nombre}" ha sido eliminado`, "warning");
+  } catch (e) {
+    mostrarMensaje("❌ Error al eliminar", "error");
+  }
+};
+
 // =============================================
 // IMPORTAR / EXPORTAR EXCEL
 // =============================================
@@ -4101,24 +4111,36 @@ function _renderClientesFiadosModal() {
 
   if (thead) {
     thead.innerHTML = isAdmin
-      ? "<tr><th>CLIENTE</th><th>CREADO POR</th></tr>"
-      : "<tr><th>CLIENTE</th></tr>";
+      ? "<tr><th>CLIENTE</th><th>CREADO POR</th><th>ACCIONES</th></tr>"
+      : "<tr><th>CLIENTE</th><th>ACCIONES</th></tr>";
   }
 
   if (!tbody) return;
   if (!list.length) {
     tbody.innerHTML = isAdmin
-      ? `<tr><td colspan="2" style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`
-      : `<tr><td style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`;
+      ? `<tr><td colspan="3" style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`
+      : `<tr><td colspan="2" style="text-align:center;color:#aaa;padding:16px;">Sin clientes</td></tr>`;
     return;
   }
 
   tbody.innerHTML = list
     .map(c => {
       const owner = (c.ownerNombre || c.ownerUsuario) ? `${c.ownerNombre || c.ownerUsuario || "—"}` : "—";
+      const safeNombre = c.nombre.replace(/'/g, "\\'");
       const row = isAdmin
-        ? `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td><td style="color:#64748b;font-size:0.82rem;">${owner}</td></tr>`
-        : `<tr data-id="${c.id}" style="cursor:pointer;"><td>${c.nombre}</td></tr>`;
+        ? `<tr data-id="${c.id}" style="cursor:pointer;">
+            <td>${c.nombre}</td>
+            <td style="color:#64748b;font-size:0.82rem;">${owner}</td>
+            <td style="width:80px;">
+              <button onclick="event.stopPropagation(); eliminarCliente('${c.id}', '${safeNombre}')" class="btn btn-danger" style="padding:6px 10px;font-size:0.85rem;">🗑</button>
+            </td>
+          </tr>`
+        : `<tr data-id="${c.id}" style="cursor:pointer;">
+            <td>${c.nombre}</td>
+            <td style="width:80px;">
+              <button onclick="event.stopPropagation(); eliminarCliente('${c.id}', '${safeNombre}')" class="btn btn-danger" style="padding:6px 10px;font-size:0.85rem;">🗑</button>
+            </td>
+          </tr>`;
       return row;
     })
     .join("");
