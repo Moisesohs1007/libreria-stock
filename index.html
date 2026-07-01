@@ -1044,51 +1044,27 @@
 
     </div><!-- fin tab-ricoh -->
 
-    <!-- TAB REPORTES > FOTOCOPIADORAS (monitor en tiempo real) -->
+    <!-- TAB REPORTES > FOTOCOPIADORAS -->
     <div id="tab-ricoh-rep" class="tab-panel">
-      <div id="ricoh-rep-banner" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:16px;border:2px solid #d97706;background:#fef3c7;font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:#92400e;">
-        <span></span>
-        <span id="ricoh-rep-banner-txt">Sin conexión — ve a Configuración → Fotocopiadoras para configurar la IP.</span>
-        <div class="dot" id="ricoh-rep-dot" style="background:#f87171;animation:none;margin-left:auto;flex-shrink:0;"></div>
-      </div>
       <!-- Selector de fotocopiadora para el reporte -->
       <div class="card" style="margin-bottom:16px;">
         <div class="card-title">Seleccionar Fotocopiadora</div>
         <select id="fotocopiadora-selector-reporte" class="input-field" onchange="cambiarFotocopiadoraReporte(this.value)"></select>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="card">
-          <div class="card-title">Contador en tiempo real — <span id="ricoh-rep-nombre">Ricoh MP5055</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-            <div class="stat-box"><div class="stat-num" id="ricoh-rep-total" style="color:#4ade80;">—</div><div class="stat-label">Total copias (vida)</div></div>
-            <div class="stat-box"><div class="stat-num" id="ricoh-rep-sesion" style="color:#60a5fa;">0</div><div class="stat-label">Copias esta sesión</div></div>
-            <div class="stat-box"><div class="stat-num" id="ricoh-rep-bw" style="color:#f4a261;">—</div><div class="stat-label">Blanco y negro</div></div>
-            <div class="stat-box"><div class="stat-num" id="ricoh-rep-ultima" style="color:#c084fc;font-size:1rem;">—</div><div class="stat-label">Última lectura</div></div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <button onclick="ricohRepIniciar()" id="btn-ricoh-rep-start" class="btn btn-primary">- Iniciar monitor</button>
-            <button onclick="ricohRepDetener()" id="btn-ricoh-rep-stop"  class="btn" style="background:#eee;display:none;">⏹ Detener</button>
-            <button onclick="ricohRepReiniciar()" class="btn btn-edit">? Reiniciar sesión</button>
-          </div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;">Actualiza cada 10s — <span id="ricoh-rep-estado">inactivo</span></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Registrar lectura en Firestore</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div><label class="input-label">Copias</label><input type="number" id="ricoh-rep-man-copias" class="input-field" placeholder="0" min="0"></div>
-            <div><label class="input-label">Tipo</label>
-              <select id="ricoh-rep-man-tipo" class="input-field">
-                <option value="bw">Blanco/Negro</option>
-                <option value="duplex">Dúplex</option>
-              </select>
-            </div>
-          </div>
-          <div style="margin-bottom:12px;"><label class="input-label">Nota</label><input id="ricoh-rep-man-nota" class="input-field" placeholder="Turno mañana..."></div>
-          <button onclick="ricohRepGuardarManual()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar registro</button>
+
+      <!-- Contador en tiempo real (solo lectura) -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title">Contador en tiempo real — <span id="ricoh-rep-nombre">Ricoh MP5055</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div class="stat-box"><div class="stat-num" id="ricoh-rep-total" style="color:#4ade80;">—</div><div class="stat-label">Total copias (vida)</div></div>
+          <div class="stat-box"><div class="stat-num" id="ricoh-rep-sesion" style="color:#60a5fa;">0</div><div class="stat-label">Copias esta sesión</div></div>
+          <div class="stat-box"><div class="stat-num" id="ricoh-rep-bw" style="color:#f4a261;">—</div><div class="stat-label">Blanco y negro</div></div>
+          <div class="stat-box"><div class="stat-num" id="ricoh-rep-ultima" style="color:#c084fc;font-size:1rem;">—</div><div class="stat-label">Última lectura</div></div>
         </div>
       </div>
+
       <!-- Filtros de fecha para reporte diario -->
-      <div class="card" style="margin-top:16px;">
+      <div class="card" style="margin-bottom:16px;">
         <div class="card-title">Reporte Diario de Copias</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
           <div>
@@ -1109,17 +1085,35 @@
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:4px;">
-        <div class="card-title">Historial de lecturas — sesión actual</div>
-        <div style="overflow-x:auto;">
-          <table class="tabla">
-            <thead><tr><th>Hora</th><th>Total acumulado</th><th>+ nuevas</th><th>B/N</th><th>Estado</th></tr></thead>
-            <tbody id="ricoh-rep-historial"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin lecturas — inicia el monitor</td></tr></tbody>
-          </table>
+
+      <!-- Historial de lecturas y registro manual -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title">Registrar lectura manual</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div><label class="input-label">Copias</label><input type="number" id="ricoh-rep-man-copias" class="input-field" placeholder="0" min="0"></div>
+            <div><label class="input-label">Tipo</label>
+              <select id="ricoh-rep-man-tipo" class="input-field">
+                <option value="bw">Blanco/Negro</option>
+                <option value="duplex">Dúplex</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:12px;"><label class="input-label">Nota</label><input id="ricoh-rep-man-nota" class="input-field" placeholder="Turno mañana..."></div>
+          <button onclick="ricohRepGuardarManual()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar registro</button>
         </div>
-        <div style="display:flex;justify-content:flex-end;margin-top:10px;gap:8px;">
-          <button onclick="ricohRepExportar()" class="btn btn-excel">Exportar Excel</button>
-          <button onclick="ricohRepLimpiar()" class="btn btn-danger" style="font-size:0.72rem;padding:6px 12px;">Limpiar</button>
+        <div class="card">
+          <div class="card-title">Historial de lecturas — sesión actual</div>
+          <div style="overflow-x:auto;">
+            <table class="tabla">
+              <thead><tr><th>Hora</th><th>Total acumulado</th><th>+ nuevas</th><th>B/N</th><th>Estado</th></tr></thead>
+              <tbody id="ricoh-rep-historial"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin lecturas — inicia el monitor en Configuración</td></tr></tbody>
+            </table>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:10px;gap:8px;">
+            <button onclick="ricohRepExportar()" class="btn btn-excel">Exportar Excel</button>
+            <button onclick="ricohRepLimpiar()" class="btn btn-danger" style="font-size:0.72rem;padding:6px 12px;">Limpiar</button>
+          </div>
         </div>
       </div>
     </div><!-- fin tab-ricoh-rep -->
