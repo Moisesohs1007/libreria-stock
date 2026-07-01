@@ -2605,7 +2605,10 @@ function renderFotocopiadorasUI() {
       return `
         <div class="card" style="margin-bottom:12px;border:${isSelected ? "3px solid #4ade80" : "2px solid var(--border)"};">
           <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-            <span>${f.nombre}</span>
+            <div>
+              <div style="font-weight:bold;">${f.nombre}</div>
+              <div style="font-size:0.8rem;color:#666;font-family:'IBM Plex Mono',monospace;">${f.modelo || "Personalizado"}</div>
+            </div>
             <div style="display:flex;gap:8px;">
               <button onclick="seleccionarFotocopiadora('${f.id}')" class="btn" style="background:${isSelected ? "#4ade80" : "#eee"};font-size:0.7rem;padding:6px 10px;">
                 ${isSelected ? "✅ Seleccionado" : "Seleccionar"}
@@ -2700,13 +2703,31 @@ function actualizarFotocopiadora(id, campo, valor) {
   }
 }
 
+// Presets para fotocopiadoras comunes
+const PRESETS = {
+  "Ricoh MP 5055": {
+    oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+    oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
+  },
+  "Ricoh MP C3504ex": {
+    oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1", // Total copias
+    oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"   // Copias B/N
+  }
+};
+
 window.agregarFotocopiadora = function() {
+  // Pedir nombre y modelo
   const nombre = prompt("Nombre de la nueva fotocopiadora:");
   if (!nombre) return;
+
+  const modeloSeleccionado = prompt("Selecciona el modelo (o escribe el nombre para personalizar):\n- Ricoh MP 5055\n- Ricoh MP C3504ex");
+
+  const preset = PRESETS[modeloSeleccionado] || PRESETS["Ricoh MP 5055"];
 
   const nueva = {
     id: "fotocopiadora-" + Date.now(),
     nombre: nombre,
+    modelo: modeloSeleccionado || "Personalizado",
     ip: "",
     port: "3001",
     community: "public",
@@ -2714,8 +2735,8 @@ window.agregarFotocopiadora = function() {
     lastTotal: null,
     historial: [],
     monitorInterval: null,
-    oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
-    oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
+    oidTotal: preset.oidTotal,
+    oidBw: preset.oidBw
   };
   fotocopiadoras.push(nueva);
   guardarFotocopiadoras();
