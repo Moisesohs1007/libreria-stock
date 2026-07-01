@@ -2592,7 +2592,7 @@ async function inicializarFotocopiadoras() {
     }
 
     // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
-    fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), (snap) => {
+    fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), async (snap) => {
       const nuevasFotocopiadoras = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -2617,7 +2617,8 @@ async function inicializarFotocopiadoras() {
             historial: [],
             oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
             oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
-            defaultDevice: true // Marcar como dispositivo por defecto
+            defaultDevice: true, // Marcar como dispositivo por defecto
+            autoStart: true // Auto-iniciar monitor al cargar la página
           };
           addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
           localStorage.setItem("fotocopiadora_default_creada", "true");
@@ -2630,6 +2631,23 @@ async function inicializarFotocopiadoras() {
         fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
       }
       renderFotocopiadorasUI();
+      
+      // Auto-iniciar monitores para fotocopiadoras con autoStart = true
+      for (const f of fotocopiadoras) {
+        if (f.autoStart && f.ip && !f.monitorInterval) {
+          try {
+            // Primero, obtener el contador actual para establecer la base
+            const data = await window.fotocopiadoraConectar(f);
+            if (data && f.baseTotal === null) {
+              f.baseTotal = data.total;
+            }
+            // Iniciar el monitor
+            await iniciarMonitorFotocopiadora(f.id);
+          } catch (e) {
+            console.log(`No se pudo auto-iniciar monitor para ${f.nombre}:`, e);
+          }
+        }
+      }
     });
   } catch(e) {
     console.error("Error cargando fotocopiadoras:", e);
@@ -2788,6 +2806,9 @@ function renderFotocopiadorasUI() {
 
   // Renderizar lista de dispositivos (con monitor en cada tarjeta)
   if (lista) {
+    const s = leerSesion();
+    const esAdmin = s?.rol === "Admin" || s?.rol === "admin";
+    
     lista.innerHTML = fotocopiadoras.map(f => {
       const isSelected = f.id === fotocopiadoraSeleccionadaId;
       const totalStr = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
@@ -2806,9 +2827,7 @@ function renderFotocopiadorasUI() {
               <button onclick="seleccionarFotocopiadora('${f.id}')" class="btn" style="background:${isSelected ? "#4ade80" : "#eee"};font-size:0.7rem;padding:6px 10px;">
                 ${isSelected ? "✅ Seleccionado" : "Seleccionar"}
               </button>
-              <button onclick="eliminarFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.7rem;padding:6px 10px;">
-                Eliminar
-              </button>
+              ${esAdmin ? `<button onclick="eliminarFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.7rem;padding:6px 10px;">Eliminar</button>` : ''}
             </div>
           </div>
 
@@ -2831,13 +2850,18 @@ function renderFotocopiadorasUI() {
 
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
               <div style="font-size:0.85rem;font-family:'IBM Plex Mono',monospace;">Estado: ${estadoMonitor}</div>
-              <div style="display:flex;gap:8px;">
-                ${f.monitorInterval ? 
+              <div style="display:flex;gap:8px;align-items:center;">
+                ${esAdmin ? `<div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;">
+                  <label style="cursor:pointer;">
+                    <input type="checkbox" ${f.autoStart ? "checked" : ""} onchange="actualizarFotocopiadora('${f.id}', 'autoStart', this.checked)"> Auto-iniciar
+                  </label>
+                </div>` : ''}
+                ${esAdmin ? (f.monitorInterval ? 
                   `<button onclick="detenerMonitorFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.78rem;padding:6px 12px;">Detener Monitor</button>` : 
                   `<button onclick="iniciarMonitorFotocopiadora('${f.id}')" class="btn btn-primary" style="font-size:0.78rem;padding:6px 12px;">▶️ Iniciar Monitor</button>`
-                }
+                ) : ''}
                 <button onclick="probarConexionFotocopiadora('${f.id}')" class="btn" style="background:#fef3c7;color:#92400e;font-size:0.78rem;padding:6px 12px;">Probar Conexión</button>
-                <button onclick="establecerBaseFotocopiadora('${f.id}')" class="btn" style="background:#e0e7ff;color:#3730a3;font-size:0.78rem;padding:6px 12px;">Establecer Base</button>
+                ${esAdmin ? `<button onclick="establecerBaseFotocopiadora('${f.id}')" class="btn" style="background:#e0e7ff;color:#3730a3;font-size:0.78rem;padding:6px 12px;">Establecer Base</button>` : ''}
               </div>
             </div>
 
@@ -2848,7 +2872,8 @@ function renderFotocopiadorasUI() {
             ` : ''}
           </div>
 
-          <!-- Configuración avanzada (oculta por defecto) -->
+          <!-- Configuración avanzada (solo admin) -->
+          ${esAdmin ? `
           <details style="margin-top:10px;">
             <summary style="cursor:pointer;font-size:0.85rem;color:#666;">⚙️ Configuración avanzada</summary>
             <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -2874,6 +2899,7 @@ function renderFotocopiadorasUI() {
               </div>
             </div>
           </details>
+          ` : ''}
         </div>
       `;
     }).join("");
@@ -2969,7 +2995,8 @@ window.agregarFotocopiadora = async function() {
     lastBw: null,
     historial: [],
     oidTotal: preset.oidTotal,
-    oidBw: preset.oidBw
+    oidBw: preset.oidBw,
+    autoStart: true // Auto-iniciar monitor al cargar la página
   };
 
   // Agregar a Firestore primero
@@ -3105,8 +3132,8 @@ window.eliminarFotocopiadora = async function(id) {
   }
 };
 
-window.fotocopiadoraConectar = async function() {
-  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+window.fotocopiadoraConectar = async function(optionalFotocopiadora) {
+  const f = optionalFotocopiadora || obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
   if (!f) return;
   try {
     const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
@@ -3115,12 +3142,12 @@ window.fotocopiadoraConectar = async function() {
     const dot = document.getElementById("ricoh-dot");
     if (dot) dot.style.background = "#4ade80";
     renderFotocopiadoraMonitorUI();
-    mostrarMensaje("✅ Conectado a " + f.nombre, "ok");
+    if (!optionalFotocopiadora) mostrarMensaje("✅ Conectado a " + f.nombre, "ok");
     return {total: parseInt(total), bw: parseInt(bw)};
   } catch(e) {
     const dot = document.getElementById("ricoh-dot");
     if (dot) dot.style.background = "#f87171";
-    mostrarMensaje("❌ Error conexión a " + f.nombre, "error");
+    if (!optionalFotocopiadora) mostrarMensaje("❌ Error conexión a " + f.nombre, "error");
   }
 };
 
