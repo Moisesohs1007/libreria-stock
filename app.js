@@ -2557,42 +2557,88 @@ document.addEventListener("input", e => {
 }, true);
 
 // =============================================
-// FOTOCOPIADORAS — MÚLTIPLES DISPOSITIVOS
+// FOTOCOPIADORAS — MÚLTIPLES DISPOSITIVOS (SINCRONIZADOS EN FIRESTORE)
 // =============================================
 let fotocopiadoras = [];
 let fotocopiadoraSeleccionadaId = null;
+let fotocopiadorasUnsub = null; // Para cancelar la suscripción a Firestore
 
-// Cargar config guardada
-(function() {
+// Cargar config guardada desde Firestore (sincronizada en la nube)
+async function inicializarFotocopiadoras() {
   try {
-    const saved = localStorage.getItem("fotocopiadoras");
-    if (saved) fotocopiadoras = JSON.parse(saved);
-    if (fotocopiadoras.length === 0) {
-      // Agregar una Ricoh MP5055 por defecto para mantener compatibilidad
-      fotocopiadoras.push({
-        id: "ricoh-mp5055-1",
-        nombre: "Ricoh MP5055",
-        ip: "",
-        port: "3001",
-        community: "public",
-        baseTotal: null,
-        lastTotal: null,
-        historial: [],
-        monitorInterval: null,
-        oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
-        oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
-      });
-    }
-    fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
-    renderFotocopiadorasUI();
+    // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
+    fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), (snap) => {
+      const nuevasFotocopiadoras = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        monitorInterval: null // No guardamos intervals en Firestore
+      }));
+
+      if (nuevasFotocopiadoras.length === 0) {
+        // Agregar una Ricoh MP5055 por defecto si no hay ninguna
+        const defaultFotocopiadora = {
+          nombre: "Ricoh MP5055",
+          modelo: "Ricoh MP5055",
+          ip: "",
+          port: "3001",
+          community: "public",
+          baseTotal: null,
+          lastTotal: null,
+          lastBw: null,
+          historial: [],
+          oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+          oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
+        };
+        addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
+        return;
+      }
+
+      fotocopiadoras = nuevasFotocopiadoras;
+      if (!fotocopiadoraSeleccionadaId && fotocopiadoras.length > 0) {
+        fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
+      }
+      renderFotocopiadorasUI();
+    });
   } catch(e) {
     console.error("Error cargando fotocopiadoras:", e);
+    // Fallback a localStorage si Firestore falla
+    const saved = localStorage.getItem("fotocopiadoras");
+    if (saved) fotocopiadoras = JSON.parse(saved);
+    renderFotocopiadorasUI();
   }
-})();
-
-function guardarFotocopiadoras() {
-  localStorage.setItem("fotocopiadoras", JSON.stringify(fotocopiadoras));
 }
+
+// Guardar fotocopiadora en Firestore
+async function guardarFotocopiadoraEnFirestore(fotocopiadora) {
+  try {
+    const { monitorInterval, ...data } = fotocopiadora;
+    // Si el ID NO empieza con "fotocopiadora-", es un ID de Firestore (ya existente)
+    if (fotocopiadora.id && !fotocopiadora.id.startsWith("fotocopiadora-")) {
+      // Actualizar documento existente en Firestore
+      await updateDoc(doc(db, "fotocopiadoras", fotocopiadora.id), data);
+    } else {
+      // Agregar nuevo documento a Firestore
+      const docRef = await addDoc(collection(db, "fotocopiadoras"), data);
+      // Actualizar el ID local con el ID generado por Firestore
+      fotocopiadora.id = docRef.id;
+    }
+  } catch(e) {
+    console.error("Error guardando fotocopiadora:", e);
+    // Fallback a localStorage si hay error
+    localStorage.setItem("fotocopiadoras", JSON.stringify(fotocopiadoras.map(f => {
+      const { monitorInterval, ...rest } = f;
+      return rest;
+    })));
+  }
+}
+
+// Guardar una fotocopiadora individual en Firestore
+async function guardarUnaFotocopiadora(fotocopiadora) {
+  await guardarFotocopiadoraEnFirestore(fotocopiadora);
+}
+
+// Inicializar fotocopiadoras al cargar la app
+inicializarFotocopiadoras();
 
 function obtenerFotocopiadora(id) {
   return fotocopiadoras.find(f => f.id === id);
@@ -2778,8 +2824,8 @@ function actualizarFotocopiadora(id, campo, valor) {
   const f = obtenerFotocopiadora(id);
   if (f) {
     f[campo] = valor;
-    guardarFotocopiadoras();
-    if (id === fotocopiadoraSeleccionadaId) renderFotocopiadoraMonitorUI();
+    guardarUnaFotocopiadora(f);
+    renderFotocopiadorasUI();
   }
 }
 
@@ -2795,7 +2841,7 @@ const PRESETS = {
   }
 };
 
-window.agregarFotocopiadora = function() {
+window.agregarFotocopiadora = async function() {
   // Pedir nombre y modelo
   const nombre = prompt("Nombre de la nueva fotocopiadora:");
   if (!nombre) return;
@@ -2805,7 +2851,6 @@ window.agregarFotocopiadora = function() {
   const preset = PRESETS[modeloSeleccionado] || PRESETS["Ricoh MP 5055"];
 
   const nueva = {
-    id: "fotocopiadora-" + Date.now(),
     nombre: nombre,
     modelo: modeloSeleccionado || "Personalizado",
     ip: "",
@@ -2813,16 +2858,21 @@ window.agregarFotocopiadora = function() {
     community: "public",
     baseTotal: null,
     lastTotal: null,
+    lastBw: null,
     historial: [],
-    monitorInterval: null,
     oidTotal: preset.oidTotal,
     oidBw: preset.oidBw
   };
-  fotocopiadoras.push(nueva);
-  guardarFotocopiadoras();
-  fotocopiadoraSeleccionadaId = nueva.id;
-  renderFotocopiadorasUI();
-  mostrarMensaje("✅ Fotocopiadora agregada", "ok");
+
+  // Agregar a Firestore primero
+  try {
+    const docRef = await addDoc(collection(db, "fotocopiadoras"), nueva);
+    nueva.id = docRef.id;
+    mostrarMensaje("✅ Fotocopiadora agregada", "ok");
+  } catch (e) {
+    console.error("Error agregando fotocopiadora:", e);
+    mostrarMensaje("❌ Error agregando fotocopiadora", "error");
+  }
 };
 
 // Funciones individuales para cada fotocopiadora
@@ -2835,7 +2885,7 @@ window.probarConexionFotocopiadora = async function(id) {
     const bw = await fotocopiadoraSnmpGet(f, f.oidBw);
     f.lastTotal = parseInt(total);
     f.lastBw = parseInt(bw);
-    guardarFotocopiadoras();
+    await guardarUnaFotocopiadora(f);
     renderFotocopiadorasUI();
     mostrarMensaje("✅ Conexión exitosa a " + f.nombre, "ok");
   } catch (e) {
@@ -2881,7 +2931,7 @@ window.iniciarMonitorFotocopiadora = function(id) {
         if (f.historial.length > 100) f.historial.pop();
       }
 
-      guardarFotocopiadoras();
+      await guardarUnaFotocopiadora(f);
       renderFotocopiadorasUI();
     } catch (e) {
       console.error("Error en monitor:", e);
@@ -2911,7 +2961,7 @@ window.establecerBaseFotocopiadora = async function(id) {
   try {
     const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
     f.baseTotal = parseInt(total);
-    guardarFotocopiadoras();
+    await guardarUnaFotocopiadora(f);
     renderFotocopiadorasUI();
     mostrarMensaje("✅ Base establecida para " + f.nombre, "ok");
   } catch (e) {
@@ -2928,16 +2978,23 @@ window.cambiarFotocopiadoraReporte = function(id) {
   renderRicohRepHistorial();
 };
 
-window.eliminarFotocopiadora = function(id) {
+window.eliminarFotocopiadora = async function(id) {
   if (!confirm("¿Seguro que quieres eliminar esta fotocopiadora?")) return;
   const f = obtenerFotocopiadora(id);
   if (f && f.monitorInterval) clearInterval(f.monitorInterval);
-  fotocopiadoras = fotocopiadoras.filter(f => f.id !== id);
-  if (fotocopiadoraSeleccionadaId === id && fotocopiadoras.length > 0) {
-    fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
+  
+  try {
+    // Eliminar de Firestore primero
+    await deleteDoc(doc(db, "fotocopiadoras", id));
+    mostrarMensaje("✅ Fotocopiadora eliminada", "ok");
+  } catch (e) {
+    console.error("Error eliminando fotocopiadora:", e);
+    mostrarMensaje("❌ Error eliminando fotocopiadora", "error");
+    // Fallback: eliminar de localStorage
+    fotocopiadoras = fotocopiadoras.filter(f => f.id !== id);
+    localStorage.setItem("fotocopiadoras", JSON.stringify(fotocopiadoras));
+    renderFotocopiadorasUI();
   }
-  guardarFotocopiadoras();
-  renderFotocopiadorasUI();
 };
 
 window.fotocopiadoraConectar = async function() {
