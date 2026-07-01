@@ -2566,9 +2566,10 @@ let fotocopiadorasUnsub = null; // Para cancelar la suscripción a Firestore
 // Cargar config guardada desde Firestore (sincronizada en la nube)
 async function inicializarFotocopiadoras() {
   try {
-    // Primero, migrar fotocopiadoras existentes en localStorage a Firestore
+    // Primero, migrar fotocopiadoras existentes en localStorage a Firestore (solo una vez)
+    const migrationFlag = localStorage.getItem("fotocopiadoras_migracion_completada");
     const savedLocal = localStorage.getItem("fotocopiadoras");
-    if (savedLocal) {
+    if (savedLocal && !migrationFlag) {
       try {
         const fotocopiadorasLocal = JSON.parse(savedLocal);
         if (fotocopiadorasLocal.length > 0) {
@@ -2577,13 +2578,17 @@ async function inicializarFotocopiadoras() {
             const { id, monitorInterval, ...data } = fLocal;
             await addDoc(collection(db, "fotocopiadoras"), data);
           }
-          // Limpiar localStorage después de migrar
+          // Marcar migración como completada y limpiar localStorage
+          localStorage.setItem("fotocopiadoras_migracion_completada", "true");
           localStorage.removeItem("fotocopiadoras");
           console.log("Migración completada!");
         }
       } catch (eMigracion) {
         console.error("Error migrando fotocopiadoras:", eMigracion);
       }
+    } else if (savedLocal && migrationFlag) {
+      // Si la migración ya se completó pero todavía hay datos en localStorage, limpiarlos
+      localStorage.removeItem("fotocopiadoras");
     }
 
     // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
@@ -2595,21 +2600,28 @@ async function inicializarFotocopiadoras() {
       }));
 
       if (nuevasFotocopiadoras.length === 0) {
-        // Agregar una Ricoh MP5055 por defecto si no hay ninguna
-        const defaultFotocopiadora = {
-          nombre: "Ricoh MP5055",
-          modelo: "Ricoh MP5055",
-          ip: "",
-          port: "3001",
-          community: "public",
-          baseTotal: null,
-          lastTotal: null,
-          lastBw: null,
-          historial: [],
-          oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
-          oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14"
-        };
-        addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
+        // Agregar una Ricoh MP5055 por defecto si no hay ninguna (solo una vez)
+        const defaultId = "ricoh_mp5055_default";
+        // Verificar si ya existe la flag de default
+        const defaultFlag = localStorage.getItem("fotocopiadora_default_creada");
+        if (!defaultFlag) {
+          const defaultFotocopiadora = {
+            nombre: "Ricoh MP5055",
+            modelo: "Ricoh MP5055",
+            ip: "",
+            port: "3001",
+            community: "public",
+            baseTotal: null,
+            lastTotal: null,
+            lastBw: null,
+            historial: [],
+            oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+            oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
+            defaultDevice: true // Marcar como dispositivo por defecto
+          };
+          addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
+          localStorage.setItem("fotocopiadora_default_creada", "true");
+        }
         return;
       }
 
