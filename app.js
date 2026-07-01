@@ -2964,6 +2964,47 @@ function renderFotocopiadorasVendedorUI() {
   renderTodosDispositivosUI();
 }
 
+let _impVendorUserFull = "";
+let _impVendorUserBase = "";
+let _impVendorUserTs = 0;
+
+async function _impResolveVendorUser() {
+  const now = Date.now();
+  if (_impVendorUserTs && (now - _impVendorUserTs) < 60000) return { full: _impVendorUserFull, base: _impVendorUserBase };
+  const { usuario, nombre } = leerSesion();
+  const candidate = (usuario || nombre || "").trim();
+  if (!candidate) return { full: "", base: "" };
+
+  let effectiveUserFull = "";
+  try {
+    const meta = await impFetchJson("/api/prints/meta");
+    const users = meta?.users || [];
+    const userStrings = users.filter(u => typeof u === "string").map(u => u.trim()).filter(Boolean);
+    if (userStrings.length) {
+      const candLower = candidate.toLowerCase();
+      for (const u of userStrings) {
+        const owner = u.split("@")[0].trim();
+        if (!owner) continue;
+        if (owner.toLowerCase() === candLower) { effectiveUserFull = u; break; }
+      }
+      if (!effectiveUserFull) {
+        for (const u of userStrings) {
+          const owner = u.split("@")[0].trim();
+          if (!owner) continue;
+          if (owner.toLowerCase().includes(candLower) || candLower.includes(owner.toLowerCase())) { effectiveUserFull = u; break; }
+        }
+      }
+      if (!effectiveUserFull) effectiveUserFull = userStrings[0];
+    }
+  } catch {}
+
+  const base = effectiveUserFull ? (effectiveUserFull.split("@")[0].trim() || candidate) : candidate;
+  _impVendorUserFull = effectiveUserFull;
+  _impVendorUserBase = base;
+  _impVendorUserTs = now;
+  return { full: effectiveUserFull, base };
+}
+
 async function renderTodosDispositivosUI() {
   const tbody = document.getElementById("v-all-devices");
   if (!tbody) return;
@@ -2988,14 +3029,11 @@ async function renderTodosDispositivosUI() {
   });
 
   // 2. Obtener datos de impresoras (copiando la lógica existente)
+  let printerRowsAdded = 0;
   try {
-    const effectiveUserFull = _getEffectiveUserFull();
+    const { full: effectiveUserFull } = await _impResolveVendorUser();
     if (effectiveUserFull) {
-      const today = new Date();
-      const day = {
-        from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
-        to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
-      };
+      const day = impTodayIsoRange();
       const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed", ...day });
       const rows = sum?.by_printer || [];
       rows.forEach(r => {
@@ -3008,29 +3046,25 @@ async function renderTodosDispositivosUI() {
           color: r.pages_color_estimated ?? r.pages_color ?? 0,
           extra: (r.pages_total || 0).toLocaleString()
         });
+        printerRowsAdded += 1;
       });
     }
   } catch {}
 
-  // 3. Calcular totales generales
-  let totalGeneral = 0;
-  let totalBn = 0;
-  let totalColor = 0;
-  dispositivos.forEach(d => {
-    totalGeneral += d.total;
-    totalBn += d.bn;
-    totalColor += d.color;
-  });
+  if (printerRowsAdded === 0) {
+    const base = (impCfg?.url || "").trim();
+    dispositivos.push({
+      tipo: "Impresora",
+      emoji: "🖨️",
+      nombre: "Servicio de impresiones",
+      total: 0,
+      bn: 0,
+      color: 0,
+      extra: base ? "sin conexión" : "no configurado"
+    });
+  }
 
-  // 4. Actualizar stat boxes
-  const elTotal = document.getElementById("v-total-general");
-  const elBn = document.getElementById("v-bn-general");
-  const elColor = document.getElementById("v-color-general");
-  if (elTotal) elTotal.textContent = totalGeneral.toLocaleString();
-  if (elBn) elBn.textContent = totalBn.toLocaleString();
-  if (elColor) elColor.textContent = totalColor.toLocaleString();
-
-  // 5. Renderizar tabla
+  // Renderizar tabla
   if (!dispositivos.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
     return;
@@ -4904,87 +4938,7 @@ async function impRefreshAll() {
 
 async function impUpdateVendorWidget() {
   if (rolActual !== "vendedor") return;
-  const { usuario, nombre } = leerSesion();
-  const candidate = (usuario || nombre || "").trim();
-  if (!candidate) return;
-  try {
-    let effectiveUserFull = "";
-    let effectiveUserBase = candidate;
-    try {
-      const meta = await impFetchJson("/api/prints/meta");
-      const users = meta?.users || [];
-      const userStrings = users.filter(u => typeof u === "string").map(u => u.trim()).filter(Boolean);
-      if (userStrings.length) {
-        const candLower = candidate.toLowerCase();
-        for (const u of userStrings) {
-          const owner = u.split("@")[0].trim();
-          if (!owner) continue;
-          if (owner.toLowerCase() === candLower) { effectiveUserFull = u; break; }
-        }
-        if (!effectiveUserFull) {
-          for (const u of userStrings) {
-            const owner = u.split("@")[0].trim();
-            if (!owner) continue;
-            if (owner.toLowerCase().includes(candLower) || candLower.includes(owner.toLowerCase())) { effectiveUserFull = u; break; }
-          }
-        }
-        if (!effectiveUserFull) effectiveUserFull = userStrings[0];
-      }
-    } catch {}
-
-    if (effectiveUserFull) effectiveUserBase = effectiveUserFull.split("@")[0].trim() || candidate;
-
-    const day = impTodayIsoRange();
-    let r = await impFetchJson("/api/prints/my-summary", { user_id: effectiveUserBase, ...day });
-    let t = r.totals || {};
-    const isAllZero = (t.pages_total ?? 0) === 0 && (t.pages_bn ?? 0) === 0 && (t.pages_color ?? 0) === 0;
-    if (isAllZero && effectiveUserBase !== candidate) {
-      try {
-        r = await impFetchJson("/api/prints/my-summary", { user_id: candidate, ...day });
-        t = r.totals || t;
-      } catch {}
-    }
-    const vTot = document.getElementById("v-imp-total");
-    const vBn = document.getElementById("v-imp-bn");
-    const vCol = document.getElementById("v-imp-color");
-    if (vTot) vTot.textContent = (t.pages_total_estimated ?? t.pages_total ?? 0).toLocaleString();
-    if (vBn) vBn.textContent = (t.pages_bn_estimated ?? t.pages_bn ?? 0).toLocaleString();
-    if (vCol) vCol.textContent = (t.pages_color_estimated ?? t.pages_color ?? 0).toLocaleString();
-    const vConf = document.getElementById("v-imp-total-conf");
-    const vEst = document.getElementById("v-imp-total-est");
-    if (vConf) vConf.textContent = (t.pages_total ?? 0).toLocaleString();
-    if (vEst) vEst.textContent = (t.pages_total_estimated ?? 0).toLocaleString();
-
-    try {
-      const tbody = document.getElementById("v-imp-by-printer");
-      if (!tbody) return;
-      if (!effectiveUserFull) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
-        return;
-      }
-      const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed", ...day });
-      const rows = sum?.by_printer || [];
-      if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = rows.map(r => `
-        <tr>
-          <td>${r.printer_name || ""}</td>
-          <td class="mono">${(r.pages_total || 0).toLocaleString()}</td>
-          <td class="mono">${(r.pages_total_estimated || 0).toLocaleString()}</td>
-          <td class="mono">${(r.pages_bn_estimated ?? r.pages_bn ?? 0).toLocaleString()}</td>
-          <td class="mono">${(r.pages_color_estimated ?? r.pages_color ?? 0).toLocaleString()}</td>
-        </tr>
-      `).join("");
-
-      // También actualizar la tabla unificada
-      renderTodosDispositivosUI();
-    } catch {
-      const tbody = document.getElementById("v-imp-by-printer");
-      if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
-    }
-  } catch {}
+  try { await renderTodosDispositivosUI(); } catch {}
 }
 
 function impConnectSocket() {
