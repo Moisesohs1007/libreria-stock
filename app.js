@@ -2834,10 +2834,13 @@ function renderFotocopiadorasUI() {
     ).join("");
   }
 
+  // Actualizar nombres de la fotocopiadora en las pestañas
+  const nombreConfig = document.getElementById("ricoh-config-nombre");
   const nombreReporte = document.getElementById("ricoh-rep-nombre");
-  if (nombreReporte) {
-    const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
-    if (f) nombreReporte.textContent = f.nombre;
+  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  if (f) {
+    if (nombreConfig) nombreConfig.textContent = f.nombre;
+    if (nombreReporte) nombreReporte.textContent = f.nombre;
   }
 
   // Renderizar selector
