@@ -733,14 +733,21 @@
     <div id="tab-usuarios" class="tab-panel">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="card">
-          <div class="card-title">Crear vendedor</div>
-          <div class="mb-3"><label class="input-label">Nombre del vendedor</label><input id="v-nombre" class="input-field" placeholder="Ej: María López"></div>
+          <div class="card-title">Crear usuario</div>
+          <div class="mb-3"><label class="input-label">Nombre completo</label><input id="v-nombre" class="input-field" placeholder="Ej: María López"></div>
           <div class="mb-3"><label class="input-label">Usuario</label><input id="v-user" class="input-field" placeholder="Ej: maria2024"></div>
-          <div class="mb-4"><label class="input-label">Contraseña</label><input id="v-pass" class="input-field" type="password" placeholder="••••••••"></div>
-          <button onclick="crearVendedor()" class="btn btn-primary" style="width:100%;justify-content:center;">Crear vendedor</button>
+          <div class="mb-3"><label class="input-label">Contraseña</label><input id="v-pass" class="input-field" type="password" placeholder="••••••••"></div>
+          <div class="mb-4">
+            <label class="input-label">Rol</label>
+            <select id="v-rol" class="input-field">
+              <option value="vendedor">Vendedor</option>
+              <option value="admin">Administrador (todo el acceso)</option>
+            </select>
+          </div>
+          <button onclick="crearVendedor()" class="btn btn-primary" style="width:100%;justify-content:center;">Crear usuario</button>
         </div>
         <div class="card">
-          <div class="card-title">Vendedores activos</div>
+          <div class="card-title">Usuarios activos</div>
           <div id="lista-vendedores"><div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Cargando...</div></div>
         </div>
       </div>

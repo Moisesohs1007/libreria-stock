@@ -406,14 +406,21 @@ window.ejecutarLogin = async function() {
   }
 
   try {
+    // Primero buscar por usuario y contraseña
     const snap = await getDocs(query(collection(db,"vendedores"), where("usuario","==",user), where("password","==",pass)));
     if (!snap.empty) {
       const docId = snap.docs[0].id;
       const v = snap.docs[0].data();
-      guardarSesionExt("vendedor", v.nombre, { user_id: docId, usuario: v.usuario || user });
-      activarVendedor(v.nombre);
+      const rol = v.rol === "admin" ? "admin" : "vendedor";
+      guardarSesionExt(rol, v.nombre, { user_id: docId, usuario: v.usuario || user });
+      if (rol === "admin") {
+        activarAdmin();
+      } else {
+        activarVendedor(v.nombre);
+      }
       return;
     }
+    // Si no, buscar por nombre o usuario (case-insensitive)
     const all = await getDocs(collection(db, "vendedores"));
     const found = all.docs
       .map(d => ({ id: d.id, ...(d.data() || {}) }))
@@ -423,8 +430,13 @@ window.ejecutarLogin = async function() {
         return (key && (u === key || n === key)) && String(v?.password || "") === pass;
       });
     if (found) {
-      guardarSesionExt("vendedor", found.nombre, { user_id: found.id, usuario: found.usuario || user });
-      activarVendedor(found.nombre);
+      const rol = found.rol === "admin" ? "admin" : "vendedor";
+      guardarSesionExt(rol, found.nombre, { user_id: found.id, usuario: found.usuario || user });
+      if (rol === "admin") {
+        activarAdmin();
+      } else {
+        activarVendedor(found.nombre);
+      }
       return;
     }
   } catch(e) { console.error("Error Login:", e); }
@@ -719,14 +731,17 @@ function renderizarVendedores(lista) {
   const div = document.getElementById("lista-vendedores");
   if (!div) return;
   if (!lista.length) {
-    div.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:14px;font-size:0.9rem;">Sin vendedores</div>`;
+    div.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:14px;font-size:0.9rem;">Sin usuarios</div>`;
     return;
   }
   div.innerHTML = lista.map(v => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);">
-      <div style="min-width:0;">
+      <div style="min-width:0;flex:1;">
         <div style="font-weight:900;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.nombre}</div>
-        <div style="color:var(--muted);font-size:0.85rem;">@${v.usuario}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+          <span style="color:var(--muted);font-size:0.85rem;">@${v.usuario}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:2px 8px;border-radius:12px;background:${v.rol === "admin" ? "#10b981" : "#60a5fa"};color:white;font-weight:bold;">${v.rol === "admin" ? "ADMIN" : "VENDEDOR"}</span>
+        </div>
       </div>
       <button class="btn btn-danger" style="padding:8px 10px;font-size:0.82rem;" onclick="eliminarVendedor('${v.id}','${String(v.nombre).replace(/'/g,"\\'")}')">Eliminar</button>
     </div>
@@ -737,16 +752,17 @@ window.crearVendedor = async function() {
   const nombre = document.getElementById("v-nombre")?.value?.trim() || "";
   const usuario = document.getElementById("v-user")?.value?.trim() || "";
   const pass = document.getElementById("v-pass")?.value || "";
+  const rol = document.getElementById("v-rol")?.value || "vendedor";
   if (!nombre || !usuario || !pass) return mostrarMensaje("⚠️ Completa todos los campos", "warning");
   if (usuario.toLowerCase() === ADMIN_USER.toLowerCase()) return mostrarMensaje("⚠️ Usuario reservado", "error");
   try {
     const snap = await getDocs(query(collection(db, "vendedores"), where("usuario", "==", usuario)));
     if (!snap.empty) return mostrarMensaje("⚠️ El usuario ya existe", "warning");
-    await addDoc(collection(db, "vendedores"), { nombre, usuario, password: pass, creadoEn: new Date() });
-    mostrarMensaje("✅ Vendedor creado", "ok");
+    await addDoc(collection(db, "vendedores"), { nombre, usuario, password: pass, rol: rol, creadoEn: new Date() });
+    mostrarMensaje(`✅ ${rol === "admin" ? "Administrador" : "Vendedor"} creado`, "ok");
     ["v-nombre", "v-user", "v-pass"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   } catch (e) {
-    mostrarMensaje("❌ Error creando vendedor", "error");
+    mostrarMensaje("❌ Error creando usuario", "error");
   }
 };
 
