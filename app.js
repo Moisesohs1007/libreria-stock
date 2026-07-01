@@ -179,21 +179,32 @@ function borrarSesion() {
   localStorage.removeItem("lpm_usuario");
 }
 
-async function autoLoginAdmin() {
+async function autoLoginVendedor() {
   try {
     const sesion = leerSesion();
     if (sesion.rol) return; // Ya está logueado
 
-    // Buscar el primer usuario Admin en Firestore
-    const q = query(collection(db, "usuarios"), where("rol", "in", ["admin", "Admin"]), limit(1));
+    // Buscar el primer usuario Vendedor en Firestore
+    const q = query(collection(db, "usuarios"), where("rol", "in", ["vendedor", "Vendedor"]), limit(1));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       const data = doc.data();
       guardarSesionExt(data.rol, data.nombre, { user_id: doc.id, usuario: data.usuario || data.nombre });
-      mostrarMensaje("✅ Logueado automáticamente como Admin", "ok");
+      mostrarMensaje("✅ Logueado automáticamente como Vendedor", "ok");
       // Recargar la UI para reflejar el login
       setTimeout(() => location.reload(), 300);
+    } else {
+      // Si no hay Vendedor, probar con Admin
+      const qAdmin = query(collection(db, "usuarios"), where("rol", "in", ["admin", "Admin"]), limit(1));
+      const snapAdmin = await getDocs(qAdmin);
+      if (!snapAdmin.empty) {
+        const docAdmin = snapAdmin.docs[0];
+        const dataAdmin = docAdmin.data();
+        guardarSesionExt(dataAdmin.rol, dataAdmin.nombre, { user_id: docAdmin.id, usuario: dataAdmin.usuario || dataAdmin.nombre });
+        mostrarMensaje("✅ Logueado automáticamente como Admin", "ok");
+        setTimeout(() => location.reload(), 300);
+      }
     }
   } catch (e) {
     console.log("Auto-login no disponible:", e);
@@ -5492,8 +5503,8 @@ function _renderMovEerr(cur, prev) {
 }
 
 window._finRenderAll = function() {
-  // Auto-login como Admin si no hay sesión
-  autoLoginAdmin();
+  // Auto-login como Vendedor si no hay sesión
+  autoLoginVendedor();
 
   try {
     const n = new Date();
