@@ -532,6 +532,7 @@ function activarVendedor(nombre) {
   try { _outsideDrainNow?.(); } catch {}
   setTimeout(() => {
     try {
+      renderFotocopiadorasVendedorUI();
       const tab = _loadVendedorTab();
       if (!tab) return;
       const panel = document.getElementById(tab);
@@ -2953,6 +2954,34 @@ function renderFotocopiadorasUI() {
 
   // Renderizar monitor del dispositivo seleccionado (para compatibilidad con la vieja UI)
   renderFotocopiadoraMonitorUI();
+
+  // Renderizar tabla de fotocopiadoras para el vendedor
+  renderFotocopiadorasVendedorUI();
+}
+
+function renderFotocopiadorasVendedorUI() {
+  const tbody = document.getElementById("v-foto-by-machine");
+  if (!tbody) return;
+
+  if (!fotocopiadoras.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = fotocopiadoras.map(f => {
+    const totalStr = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
+    const sesionStr = f.baseTotal ? (f.lastTotal - f.baseTotal).toLocaleString() : "0";
+    const ultimaStr = f.historial[0]?.hora || "—";
+
+    return `
+      <tr>
+        <td style="font-weight:bold;">${f.nombre}</td>
+        <td class="mono" style="font-weight:900;">${totalStr}</td>
+        <td class="mono" style="color:#2563eb;font-weight:900;">${sesionStr}</td>
+        <td class="mono" style="color:#92400e;">${ultimaStr}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function renderFotocopiadoraMonitorUI() {
@@ -3188,6 +3217,7 @@ window.fotocopiadoraConectar = async function(optionalFotocopiadora) {
     const dot = document.getElementById("ricoh-dot");
     if (dot) dot.style.background = "#4ade80";
     renderFotocopiadoraMonitorUI();
+    renderFotocopiadorasVendedorUI();
     if (!optionalFotocopiadora) mostrarMensaje("✅ Conectado a " + f.nombre, "ok");
     return {total: parseInt(total), bw: parseInt(bw)};
   } catch(e) {
@@ -3214,11 +3244,13 @@ window.fotocopiadoraIniciarMonitor = function() {
         guardarFotocopiadoras();
       }
       renderFotocopiadoraMonitorUI();
+      renderFotocopiadorasVendedorUI();
     }
   };
   poll();
   f.monitorInterval = setInterval(poll, 10000);
   renderFotocopiadoraMonitorUI();
+  renderFotocopiadorasVendedorUI();
 };
 
 window.fotocopiadoraDetenerMonitor = function() {
@@ -3227,6 +3259,7 @@ window.fotocopiadoraDetenerMonitor = function() {
     clearInterval(f.monitorInterval);
     f.monitorInterval = null;
     renderFotocopiadoraMonitorUI();
+    renderFotocopiadorasVendedorUI();
   }
 };
 
@@ -3236,6 +3269,7 @@ window.fotocopiadoraReiniciarSesion = function() {
     f.baseTotal = f.lastTotal;
     guardarFotocopiadoras();
     renderFotocopiadoraMonitorUI();
+    renderFotocopiadorasVendedorUI();
     mostrarMensaje("↺ Sesión reiniciada", "ok");
   }
 };
@@ -3246,6 +3280,7 @@ window.fotocopiadoraLimpiarHistorial = function() {
     f.historial = [];
     guardarFotocopiadoras();
     renderFotocopiadoraMonitorUI();
+    renderFotocopiadorasVendedorUI();
   }
 };
 
