@@ -3136,7 +3136,8 @@ window.fotocopiadoraIniciarMonitor = function() {
       const delta = data.total - (f.lastTotal !== null ? f.lastTotal : data.total);
       f.lastTotal = data.total;
       if (delta > 0) {
-        f.historial.unshift({hora: now, total: data.total, delta, bw: data.bw, estado: "OK"});
+        const fecha = _dateToYmd(new Date());
+        f.historial.unshift({fecha, hora: now, total: data.total, delta, bw: data.bw, estado: "OK"});
         guardarFotocopiadoras();
       }
       renderFotocopiadoraMonitorUI();
@@ -3324,6 +3325,118 @@ window.ricohRepExportar = function() {
   const nombreHoja = f ? f.nombre.replace(/[^a-zA-Z0-9]/g, "_") : "Ricoh";
   XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
   XLSX.writeFile(wb, `${nombreHoja}_reporte.xlsx`);
+};
+
+// Reporte diario de fotocopiadoras
+window.fotorepGenerar = async function() {
+  try {
+    const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+    if (!f) return mostrarMensaje("⚠️ Selecciona una fotocopiadora primero", "warning");
+
+    const desdeEl = document.getElementById("fotorep-desde");
+    const hastaEl = document.getElementById("fotorep-hasta");
+
+    // Establecer fechas por defecto si están vacías
+    let desde = desdeEl?.value ? new Date(desdeEl.value + "T00:00:00") : new Date();
+    desde.setHours(0, 0, 0, 0);
+
+    let hasta = hastaEl?.value ? new Date(hastaEl.value + "T23:59:59") : new Date();
+    hasta.setHours(23, 59, 59, 999);
+
+    // Cargar lecturas manuales de Firestore
+    const lecturasSnap = await getDocs(query(
+      collection(db, "ricoh_lecturas"),
+      where("fotocopiadoraId", "==", f.id),
+      where("fecha", ">=", desde),
+      where("fecha", "<=", hasta),
+      orderBy("fecha", "asc")
+    ));
+
+    // También usar el historial guardado en la fotocopiadora
+    const historial = f.historial || [];
+
+    // Agrupar por fecha
+    const porFecha = {};
+
+    // Procesar lecturas manuales
+    lecturasSnap.forEach(doc => {
+      const data = doc.data();
+      const fecha = _dateToYmd(data.fecha.toDate ? data.fecha.toDate() : new Date(data.fecha));
+      if (!porFecha[fecha]) porFecha[fecha] = { total: 0, bw: 0, color: 0 };
+      porFecha[fecha].total += data.copias || 0;
+      if (data.tipo === "bw") porFecha[fecha].bw += data.copias || 0;
+      else porFecha[fecha].color += data.copias || 0;
+    });
+
+    // Procesar historial de la fotocopiadora
+    let primerTotalDia = {};
+    let ultimoTotalDia = {};
+
+    historial.forEach(h => {
+      const fecha = h.fecha || _dateToYmd(new Date());
+      if (!primerTotalDia[fecha]) primerTotalDia[fecha] = h.total;
+      ultimoTotalDia[fecha] = h.total;
+    });
+
+    // Calcular copias por día desde el historial
+    for (const fecha in ultimoTotalDia) {
+      const primer = primerTotalDia[fecha] || ultimoTotalDia[fecha];
+      const ultimo = ultimoTotalDia[fecha];
+      const copias = ultimo - primer;
+      if (!porFecha[fecha]) porFecha[fecha] = { total: 0, bw: 0, color: 0 };
+      porFecha[fecha].total += Math.max(0, copias);
+    }
+
+    // Convertir a array y ordenar
+    const fechas = Object.keys(porFecha).sort();
+
+    // Renderizar
+    const tbody = document.getElementById("fotorep-tbody");
+    const resumenDiv = document.getElementById("fotorep-resumen");
+
+    if (!fechas.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">No hay datos para las fechas seleccionadas</td></tr>`;
+      resumenDiv.innerHTML = "";
+      return;
+    }
+
+    // Calcular totales globales
+    let totalGlobal = 0;
+    let totalBwGlobal = 0;
+    let totalColorGlobal = 0;
+
+    fechas.forEach(fecha => {
+      const datos = porFecha[fecha];
+      totalGlobal += datos.total;
+      totalBwGlobal += datos.bw;
+      totalColorGlobal += datos.color;
+    });
+
+    // Renderizar resumen
+    resumenDiv.innerHTML = `
+      <div class="stat-box"><div class="stat-num" style="color:#4ade80;">${totalGlobal.toLocaleString()}</div><div class="stat-label">Total copias</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:#f4a261;">${totalBwGlobal.toLocaleString()}</div><div class="stat-label">Blanco/Negro</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:#8b5cf6;">${totalColorGlobal.toLocaleString()}</div><div class="stat-label">Color (est.)</div></div>
+    `;
+
+    // Renderizar tabla
+    tbody.innerHTML = fechas.map(fecha => {
+      const datos = porFecha[fecha];
+      return `
+        <tr>
+          <td>${fecha}</td>
+          <td class="mono" style="color:var(--accent);font-weight:900;">${datos.total.toLocaleString()}</td>
+          <td class="mono">${datos.bw.toLocaleString()}</td>
+          <td class="mono">${datos.color.toLocaleString()}</td>
+        </tr>
+      `;
+    }).join("");
+
+    mostrarMensaje("✅ Reporte generado", "ok");
+  } catch (e) {
+    console.error("Error generando reporte:", e);
+    mostrarMensaje("❌ Error generando reporte: " + e.message, "error");
+  }
 };
 
 window.ricohRepGuardarManual = async function() {

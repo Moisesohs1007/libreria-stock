@@ -1062,6 +1062,28 @@
           <button onclick="ricohRepGuardarManual()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar registro</button>
         </div>
       </div>
+      <!-- Filtros de fecha para reporte diario -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">Reporte Diario de Copias</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
+          <div>
+            <label class="input-label">Desde</label>
+            <input type="date" id="fotorep-desde" class="input-field" style="width:auto;">
+          </div>
+          <div>
+            <label class="input-label">Hasta</label>
+            <input type="date" id="fotorep-hasta" class="input-field" style="width:auto;">
+          </div>
+          <button onclick="fotorepGenerar()" class="btn btn-primary">Generar Reporte</button>
+        </div>
+        <div id="fotorep-resumen" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;"></div>
+        <div style="overflow-x:auto;">
+          <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Total Copias</th><th>Blanco/Negro</th><th>Color (est.)</th></tr></thead>
+            <tbody id="fotorep-tbody"><tr><td colspan="4" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Selecciona fechas y haz clic en Generar Reporte</td></tr></tbody>
+          </table>
+        </div>
+      </div>
       <div class="card" style="margin-top:4px;">
         <div class="card-title">Historial de lecturas — sesión actual</div>
         <div style="overflow-x:auto;">
@@ -1308,6 +1330,15 @@
       var seccion = byId("seccion-activa");
       if (seccion) seccion.textContent = titulo || "";
       try { window.cerrarSidebar(); } catch {}
+      
+      // Inicializar fechas para reporte de fotocopiadoras
+      if (tabId === "tab-ricoh-rep") {
+        const hoy = new Date().toISOString().split('T')[0];
+        const desdeEl = byId("fotorep-desde");
+        const hastaEl = byId("fotorep-hasta");
+        if (desdeEl && !desdeEl.value) desdeEl.value = hoy;
+        if (hastaEl && !hastaEl.value) hastaEl.value = hoy;
+      }
     };
     window.toggleDtGroup = window.toggleDtGroup || function (groupId) {
       var grp = byId(groupId);
