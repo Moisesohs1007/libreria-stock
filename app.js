@@ -2660,6 +2660,82 @@ async function guardarUnaFotocopiadora(fotocopiadora) {
 // Inicializar fotocopiadoras al cargar la app
 inicializarFotocopiadoras();
 
+// ============ SISTEMA DE CONTROL REMOTO (BROADCAST) ============
+let broadcastUnsubscribe = null;
+
+// Inicializar sistema de broadcast
+function inicializarBroadcast() {
+  try {
+    broadcastUnsubscribe = onSnapshot(collection(db, "broadcast"), (snap) => {
+      snap.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const comando = change.doc.data();
+          ejecutarComandoRemoto(comando);
+        }
+      });
+    });
+  } catch (e) {
+    console.error("Error inicializando broadcast:", e);
+  }
+}
+
+// Ejecutar comando remoto
+function ejecutarComandoRemoto(comando) {
+  const { tipo, mensaje, timestamp } = comando;
+  const ahora = Date.now();
+  const diferencia = ahora - timestamp;
+  
+  // Solo ejecutar comandos recientes (menos de 1 minuto)
+  if (diferencia > 60000) return;
+
+  if (tipo === "forzar_actualizacion") {
+    alert(mensaje || "Actualización obligatoria! La página se recargará en 3 segundos...");
+    setTimeout(() => {
+      location.reload(true);
+    }, 3000);
+  } else if (tipo === "forzar_cierre") {
+    alert(mensaje || "Cierre obligatorio! La página se cerrará en 3 segundos...");
+    setTimeout(() => {
+      window.close();
+    }, 3000);
+  }
+}
+
+// Enviar comando para forzar actualización
+window.broadcastForzarActualizacion = async function() {
+  if (!confirm("¿Seguro que quieres forzar la actualización en todas las PCs?")) return;
+  try {
+    await addDoc(collection(db, "broadcast"), {
+      tipo: "forzar_actualizacion",
+      mensaje: "Actualización obligatoria: recargando la app...",
+      timestamp: Date.now()
+    });
+    mostrarMensaje("✅ Comando enviado! Todas las PCs se actualizarán.", "ok");
+  } catch (e) {
+    console.error("Error enviando comando:", e);
+    mostrarMensaje("❌ Error enviando comando.", "error");
+  }
+};
+
+// Enviar comando para forzar cierre
+window.broadcastForzarCierre = async function() {
+  if (!confirm("¿Seguro que quieres forzar el cierre de la app en todas las PCs?")) return;
+  try {
+    await addDoc(collection(db, "broadcast"), {
+      tipo: "forzar_cierre",
+      mensaje: "Cierre obligatorio: cerrando la app...",
+      timestamp: Date.now()
+    });
+    mostrarMensaje("✅ Comando enviado! Todas las PCs cerrarán la app.", "ok");
+  } catch (e) {
+    console.error("Error enviando comando:", e);
+    mostrarMensaje("❌ Error enviando comando.", "error");
+  }
+};
+
+// Inicializar broadcast al cargar la app
+inicializarBroadcast();
+
 function obtenerFotocopiadora(id) {
   return fotocopiadoras.find(f => f.id === id);
 }

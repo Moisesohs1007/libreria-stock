@@ -750,6 +750,13 @@
           <div class="card-title">Usuarios activos</div>
           <div id="lista-vendedores"><div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Cargando...</div></div>
         </div>
+        <div class="card" style="margin-top: 14px;">
+          <div class="card-title">Control Remoto (Solo Admin)</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="broadcastForzarActualizacion()" class="btn" style="background:#fef3c7;color:#92400e;">Forzar Actualización en Todas las PCs</button>
+            <button onclick="broadcastForzarCierre()" class="btn btn-danger">Forzar Cierre de la App en Todas las PCs</button>
+          </div>
+        </div>
       </div>
     </div>
 
