@@ -1086,34 +1086,18 @@
         </div>
       </div>
 
-      <!-- Historial de lecturas y registro manual -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="card">
-          <div class="card-title">Registrar lectura manual</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div><label class="input-label">Copias</label><input type="number" id="ricoh-rep-man-copias" class="input-field" placeholder="0" min="0"></div>
-            <div><label class="input-label">Tipo</label>
-              <select id="ricoh-rep-man-tipo" class="input-field">
-                <option value="bw">Blanco/Negro</option>
-                <option value="duplex">Dúplex</option>
-              </select>
-            </div>
-          </div>
-          <div style="margin-bottom:12px;"><label class="input-label">Nota</label><input id="ricoh-rep-man-nota" class="input-field" placeholder="Turno mañana..."></div>
-          <button onclick="ricohRepGuardarManual()" class="btn btn-primary" style="width:100%;justify-content:center;">Guardar registro</button>
+      <!-- Historial de lecturas -->
+      <div class="card">
+        <div class="card-title">Historial de lecturas — sesión actual</div>
+        <div style="overflow-x:auto;">
+          <table class="tabla">
+            <thead><tr><th>Hora</th><th>Total acumulado</th><th>+ nuevas</th><th>B/N</th><th>Estado</th></tr></thead>
+            <tbody id="ricoh-rep-historial"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin lecturas — inicia el monitor en Configuración</td></tr></tbody>
+          </table>
         </div>
-        <div class="card">
-          <div class="card-title">Historial de lecturas — sesión actual</div>
-          <div style="overflow-x:auto;">
-            <table class="tabla">
-              <thead><tr><th>Hora</th><th>Total acumulado</th><th>+ nuevas</th><th>B/N</th><th>Estado</th></tr></thead>
-              <tbody id="ricoh-rep-historial"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;">Sin lecturas — inicia el monitor en Configuración</td></tr></tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:flex-end;margin-top:10px;gap:8px;">
-            <button onclick="ricohRepExportar()" class="btn btn-excel">Exportar Excel</button>
-            <button onclick="ricohRepLimpiar()" class="btn btn-danger" style="font-size:0.72rem;padding:6px 12px;">Limpiar</button>
-          </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;gap:8px;">
+          <button onclick="ricohRepExportar()" class="btn btn-excel">Exportar Excel</button>
+          <button onclick="ricohRepLimpiar()" class="btn btn-danger" style="font-size:0.72rem;padding:6px 12px;">Limpiar</button>
         </div>
       </div>
     </div><!-- fin tab-ricoh-rep -->
