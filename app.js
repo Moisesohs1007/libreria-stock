@@ -532,7 +532,7 @@ function activarVendedor(nombre) {
   try { _outsideDrainNow?.(); } catch {}
   setTimeout(() => {
     try {
-      renderFotocopiadorasVendedorUI();
+      renderTodosDispositivosUI();
       const tab = _loadVendedorTab();
       if (!tab) return;
       const panel = document.getElementById(tab);
@@ -2960,28 +2960,92 @@ function renderFotocopiadorasUI() {
 }
 
 function renderFotocopiadorasVendedorUI() {
-  const tbody = document.getElementById("v-foto-by-machine");
+  // Ya no se usa individualmente, pero se mantiene por compatibilidad
+  renderTodosDispositivosUI();
+}
+
+async function renderTodosDispositivosUI() {
+  const tbody = document.getElementById("v-all-devices");
   if (!tbody) return;
 
-  if (!fotocopiadoras.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
+  // 1. Obtener datos de fotocopiadoras
+  const dispositivos = [];
+
+  // Agregar fotocopiadoras
+  fotocopiadoras.forEach(f => {
+    const total = f.lastTotal || 0;
+    const bn = f.lastBw || 0;
+    const color = total - bn;
+    dispositivos.push({
+      tipo: "Fotocopiadora",
+      emoji: "📷",
+      nombre: f.nombre,
+      total: total,
+      bn: bn,
+      color: color,
+      extra: f.historial[0]?.hora || "—"
+    });
+  });
+
+  // 2. Obtener datos de impresoras (copiando la lógica existente)
+  try {
+    const effectiveUserFull = _getEffectiveUserFull();
+    if (effectiveUserFull) {
+      const today = new Date();
+      const day = {
+        from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
+        to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+      };
+      const sum = await impFetchJson("/api/prints/summary", { users: effectiveUserFull, status: "completed", ...day });
+      const rows = sum?.by_printer || [];
+      rows.forEach(r => {
+        dispositivos.push({
+          tipo: "Impresora",
+          emoji: "🖨️",
+          nombre: r.printer_name || "",
+          total: r.pages_total_estimated ?? r.pages_total ?? 0,
+          bn: r.pages_bn_estimated ?? r.pages_bn ?? 0,
+          color: r.pages_color_estimated ?? r.pages_color ?? 0,
+          extra: (r.pages_total || 0).toLocaleString()
+        });
+      });
+    }
+  } catch {}
+
+  // 3. Calcular totales generales
+  let totalGeneral = 0;
+  let totalBn = 0;
+  let totalColor = 0;
+  dispositivos.forEach(d => {
+    totalGeneral += d.total;
+    totalBn += d.bn;
+    totalColor += d.color;
+  });
+
+  // 4. Actualizar stat boxes
+  const elTotal = document.getElementById("v-total-general");
+  const elBn = document.getElementById("v-bn-general");
+  const elColor = document.getElementById("v-color-general");
+  if (elTotal) elTotal.textContent = totalGeneral.toLocaleString();
+  if (elBn) elBn.textContent = totalBn.toLocaleString();
+  if (elColor) elColor.textContent = totalColor.toLocaleString();
+
+  // 5. Renderizar tabla
+  if (!dispositivos.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = fotocopiadoras.map(f => {
-    const totalStr = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
-    const sesionStr = f.baseTotal ? (f.lastTotal - f.baseTotal).toLocaleString() : "0";
-    const ultimaStr = f.historial[0]?.hora || "—";
-
-    return `
-      <tr>
-        <td style="font-weight:bold;">${f.nombre}</td>
-        <td class="mono" style="font-weight:900;">${totalStr}</td>
-        <td class="mono" style="color:#2563eb;font-weight:900;">${sesionStr}</td>
-        <td class="mono" style="color:#92400e;">${ultimaStr}</td>
-      </tr>
-    `;
-  }).join("");
+  tbody.innerHTML = dispositivos.map(d => `
+    <tr>
+      <td>${d.emoji} ${d.tipo}</td>
+      <td style="font-weight:bold;">${d.nombre}</td>
+      <td class="mono" style="font-weight:900;">${d.total.toLocaleString()}</td>
+      <td class="mono">${d.bn.toLocaleString()}</td>
+      <td class="mono">${d.color.toLocaleString()}</td>
+      <td class="mono">${d.extra}</td>
+    </tr>
+  `).join("");
 }
 
 function renderFotocopiadoraMonitorUI() {
@@ -3217,7 +3281,7 @@ window.fotocopiadoraConectar = async function(optionalFotocopiadora) {
     const dot = document.getElementById("ricoh-dot");
     if (dot) dot.style.background = "#4ade80";
     renderFotocopiadoraMonitorUI();
-    renderFotocopiadorasVendedorUI();
+    renderTodosDispositivosUI();
     if (!optionalFotocopiadora) mostrarMensaje("✅ Conectado a " + f.nombre, "ok");
     return {total: parseInt(total), bw: parseInt(bw)};
   } catch(e) {
@@ -3244,13 +3308,13 @@ window.fotocopiadoraIniciarMonitor = function() {
         guardarFotocopiadoras();
       }
       renderFotocopiadoraMonitorUI();
-      renderFotocopiadorasVendedorUI();
+      renderTodosDispositivosUI();
     }
   };
   poll();
   f.monitorInterval = setInterval(poll, 10000);
   renderFotocopiadoraMonitorUI();
-  renderFotocopiadorasVendedorUI();
+  renderTodosDispositivosUI();
 };
 
 window.fotocopiadoraDetenerMonitor = function() {
@@ -3259,7 +3323,7 @@ window.fotocopiadoraDetenerMonitor = function() {
     clearInterval(f.monitorInterval);
     f.monitorInterval = null;
     renderFotocopiadoraMonitorUI();
-    renderFotocopiadorasVendedorUI();
+    renderTodosDispositivosUI();
   }
 };
 
@@ -3269,7 +3333,7 @@ window.fotocopiadoraReiniciarSesion = function() {
     f.baseTotal = f.lastTotal;
     guardarFotocopiadoras();
     renderFotocopiadoraMonitorUI();
-    renderFotocopiadorasVendedorUI();
+    renderTodosDispositivosUI();
     mostrarMensaje("↺ Sesión reiniciada", "ok");
   }
 };
@@ -3280,7 +3344,7 @@ window.fotocopiadoraLimpiarHistorial = function() {
     f.historial = [];
     guardarFotocopiadoras();
     renderFotocopiadoraMonitorUI();
-    renderFotocopiadorasVendedorUI();
+    renderTodosDispositivosUI();
   }
 };
 
@@ -4913,6 +4977,9 @@ async function impUpdateVendorWidget() {
           <td class="mono">${(r.pages_color_estimated ?? r.pages_color ?? 0).toLocaleString()}</td>
         </tr>
       `).join("");
+
+      // También actualizar la tabla unificada
+      renderTodosDispositivosUI();
     } catch {
       const tbody = document.getElementById("v-imp-by-printer");
       if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>`;

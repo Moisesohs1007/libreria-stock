@@ -77,53 +77,29 @@
       <div id="v-alertas-stock"><div style="text-align:center;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:0.8rem;padding:20px;">Todo bien ✅</div></div>
     </div>
     <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">Mi Conteo de Impresiones</div>
+      <div class="card-title">Mi Conteo (Impresoras y Fotocopiadoras)</div>
       <div class="grid grid-cols-3 gap-3">
-        <div class="stat-box"><div class="stat-num" id="v-imp-total" style="color:#10b981;">0</div><div class="stat-label">Total (estimadas)</div></div>
-        <div class="stat-box"><div class="stat-num" id="v-imp-bn" style="color:#94a3b8;">0</div><div class="stat-label">B/N (estimadas)</div></div>
-        <div class="stat-box"><div class="stat-num" id="v-imp-color" style="color:#f59e0b;">0</div><div class="stat-label">Color (estimadas)</div></div>
-      </div>
-      <div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;display:flex;gap:10px;flex-wrap:wrap;">
-        <span>Confirmadas: <span id="v-imp-total-conf" style="font-weight:800;">0</span></span>
-        <span>Estimadas (copias): <span id="v-imp-total-est" style="font-weight:800;">0</span></span>
+        <div class="stat-box"><div class="stat-num" id="v-total-general" style="color:#10b981;">0</div><div class="stat-label">Total General</div></div>
+        <div class="stat-box"><div class="stat-num" id="v-bn-general" style="color:#94a3b8;">0</div><div class="stat-label">B/N Total</div></div>
+        <div class="stat-box"><div class="stat-num" id="v-color-general" style="color:#f59e0b;">0</div><div class="stat-label">Color Total</div></div>
       </div>
       <div style="margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;letter-spacing:1px;text-transform:uppercase;">
-        Por impresora
+        Por dispositivo
       </div>
       <div style="overflow-x:auto;margin-top:6px;">
         <table class="fiadas-hist-table" style="margin:0;">
           <thead>
             <tr>
-              <th>IMPRESORA</th>
-              <th class="mono">CONF</th>
-              <th class="mono">EST</th>
+              <th>TIPO</th>
+              <th>NOMBRE</th>
+              <th class="mono">TOTAL</th>
               <th class="mono">B/N</th>
               <th class="mono">COLOR</th>
+              <th class="mono">ÚLTIMA / CONF</th>
             </tr>
           </thead>
-          <tbody id="v-imp-by-printer">
-            <tr><td colspan="5" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">Mi Conteo de Fotocopiadoras</div>
-      <div style="margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:#888;letter-spacing:1px;text-transform:uppercase;">
-        Por fotocopiadora
-      </div>
-      <div style="overflow-x:auto;margin-top:6px;">
-        <table class="fiadas-hist-table" style="margin:0;">
-          <thead>
-            <tr>
-              <th>FOTOCOPIADORA</th>
-              <th class="mono">TOTAL</th>
-              <th class="mono">SESIÓN</th>
-              <th class="mono">ÚLTIMA</th>
-            </tr>
-          </thead>
-          <tbody id="v-foto-by-machine">
-            <tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>
+          <tbody id="v-all-devices">
+            <tr><td colspan="6" style="text-align:center;color:#aaa;padding:12px;">Sin datos</td></tr>
           </tbody>
         </table>
       </div>
