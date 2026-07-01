@@ -734,19 +734,35 @@ function renderizarVendedores(lista) {
     div.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:14px;font-size:0.9rem;">Sin usuarios</div>`;
     return;
   }
-  div.innerHTML = lista.map(v => `
+  div.innerHTML = lista.map(v => {
+    const rolActual = v.rol || "vendedor";
+    const otroRol = rolActual === "admin" ? "vendedor" : "admin";
+    return `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);">
       <div style="min-width:0;flex:1;">
         <div style="font-weight:900;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.nombre}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
           <span style="color:var(--muted);font-size:0.85rem;">@${v.usuario}</span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:2px 8px;border-radius:12px;background:${v.rol === "admin" ? "#10b981" : "#60a5fa"};color:white;font-weight:bold;">${v.rol === "admin" ? "ADMIN" : "VENDEDOR"}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:2px 8px;border-radius:12px;background:${rolActual === "admin" ? "#10b981" : "#60a5fa"};color:white;font-weight:bold;">${rolActual === "admin" ? "ADMIN" : "VENDEDOR"}</span>
         </div>
       </div>
-      <button class="btn btn-danger" style="padding:8px 10px;font-size:0.82rem;" onclick="eliminarVendedor('${v.id}','${String(v.nombre).replace(/'/g,"\\'")}')">Eliminar</button>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn" style="padding:6px 10px;font-size:0.78rem;background:#fef3c7;color:#92400e;" onclick="cambiarRolVendedor('${v.id}','${String(v.nombre).replace(/'/g,"\\'")}','${otroRol}')">Cambiar a ${otroRol === "admin" ? "ADMIN" : "VENDEDOR"}</button>
+        <button class="btn btn-danger" style="padding:6px 10px;font-size:0.78rem;" onclick="eliminarVendedor('${v.id}','${String(v.nombre).replace(/'/g,"\\'")}')">Eliminar</button>
+      </div>
     </div>
-  `).join("");
+  `}).join("");
 }
+
+window.cambiarRolVendedor = async function(id, nombre, nuevoRol) {
+  if (!confirm(`¿Cambiar a "${nombre}" a ${nuevoRol === "admin" ? "ADMINISTRADOR" : "VENDEDOR"}?`)) return;
+  try {
+    await updateDoc(doc(db, "vendedores", id), { rol: nuevoRol });
+    mostrarMensaje(`✅ Rol cambiado a ${nuevoRol === "admin" ? "ADMIN" : "VENDEDOR"}`, "ok");
+  } catch (e) {
+    mostrarMensaje("❌ Error cambiando rol", "error");
+  }
+};
 
 window.crearVendedor = async function() {
   const nombre = document.getElementById("v-nombre")?.value?.trim() || "";
