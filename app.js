@@ -2566,6 +2566,26 @@ let fotocopiadorasUnsub = null; // Para cancelar la suscripción a Firestore
 // Cargar config guardada desde Firestore (sincronizada en la nube)
 async function inicializarFotocopiadoras() {
   try {
+    // Primero, migrar fotocopiadoras existentes en localStorage a Firestore
+    const savedLocal = localStorage.getItem("fotocopiadoras");
+    if (savedLocal) {
+      try {
+        const fotocopiadorasLocal = JSON.parse(savedLocal);
+        if (fotocopiadorasLocal.length > 0) {
+          console.log("Migrando fotocopiadoras desde localStorage a Firestore...");
+          for (const fLocal of fotocopiadorasLocal) {
+            const { id, monitorInterval, ...data } = fLocal;
+            await addDoc(collection(db, "fotocopiadoras"), data);
+          }
+          // Limpiar localStorage después de migrar
+          localStorage.removeItem("fotocopiadoras");
+          console.log("Migración completada!");
+        }
+      } catch (eMigracion) {
+        console.error("Error migrando fotocopiadoras:", eMigracion);
+      }
+    }
+
     // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
     fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), (snap) => {
       const nuevasFotocopiadoras = snap.docs.map(doc => ({
