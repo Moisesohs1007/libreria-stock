@@ -755,12 +755,14 @@ function renderizarVendedores(lista) {
 }
 
 window.cambiarRolVendedor = async function(id, nombre, nuevoRol) {
-  if (!confirm(`¿Cambiar a "${nombre}" a ${nuevoRol === "admin" ? "ADMINISTRADOR" : "VENDEDOR"}?`)) return;
+  // Sin popup de confirmación para pruebas
+  mostrarMensaje("🔄 Cambiando rol...", "warning");
   try {
     await updateDoc(doc(db, "vendedores", id), { rol: nuevoRol });
     mostrarMensaje(`✅ Rol cambiado a ${nuevoRol === "admin" ? "ADMIN" : "VENDEDOR"}`, "ok");
   } catch (e) {
-    mostrarMensaje("❌ Error cambiando rol", "error");
+    console.error("Error cambiando rol:", e);
+    mostrarMensaje(`❌ Error: ${e.message || "Error cambiando rol"}`, "error");
   }
 };
 
@@ -2630,10 +2632,15 @@ function renderFotocopiadorasUI() {
     ).join("");
   }
 
-  // Renderizar lista de dispositivos
+  // Renderizar lista de dispositivos (con monitor en cada tarjeta)
   if (lista) {
     lista.innerHTML = fotocopiadoras.map(f => {
       const isSelected = f.id === fotocopiadoraSeleccionadaId;
+      const totalStr = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
+      const sesionStr = f.baseTotal ? (f.lastTotal - f.baseTotal).toLocaleString() : "0";
+      const bwStr = f.lastBw ? f.lastBw.toLocaleString() : "—";
+      const estadoMonitor = f.monitorInterval ? "🟢 Activo" : "🔴 Detenido";
+
       return `
         <div class="card" style="margin-bottom:12px;border:${isSelected ? "3px solid #4ade80" : "2px solid var(--border)"};">
           <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
@@ -2650,34 +2657,75 @@ function renderFotocopiadorasUI() {
               </button>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <label class="input-label">IP</label>
-              <input class="input-field" placeholder="192.168.1.100" value="${f.ip}" onchange="actualizarFotocopiadora('${f.id}', 'ip', this.value)">
+
+          <!-- Monitor en tiempo real -->
+          <div style="margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid var(--border);">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div style="text-align:center;">
+                <div style="font-size:0.8rem;color:#666;">Total</div>
+                <div style="font-weight:900;font-size:1.4rem;color:#0f172a;">${totalStr}</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:0.8rem;color:#666;">Esta Sesión</div>
+                <div style="font-weight:900;font-size:1.4rem;color:#2563eb;">${sesionStr}</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:0.8rem;color:#666;">B/N</div>
+                <div style="font-weight:900;font-size:1.4rem;color:#16a34a;">${bwStr}</div>
+              </div>
             </div>
-            <div>
-              <label class="input-label">Puerto Proxy</label>
-              <input class="input-field" placeholder="3001" value="${f.port}" onchange="actualizarFotocopiadora('${f.id}', 'port', this.value)">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div style="font-size:0.85rem;font-family:'IBM Plex Mono',monospace;">Estado: ${estadoMonitor}</div>
+              <div style="display:flex;gap:8px;">
+                ${f.monitorInterval ? 
+                  `<button onclick="detenerMonitorFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.78rem;padding:6px 12px;">Detener Monitor</button>` : 
+                  `<button onclick="iniciarMonitorFotocopiadora('${f.id}')" class="btn btn-primary" style="font-size:0.78rem;padding:6px 12px;">▶️ Iniciar Monitor</button>`
+                }
+                <button onclick="probarConexionFotocopiadora('${f.id}')" class="btn" style="background:#fef3c7;color:#92400e;font-size:0.78rem;padding:6px 12px;">Probar Conexión</button>
+                <button onclick="establecerBaseFotocopiadora('${f.id}')" class="btn" style="background:#e0e7ff;color:#3730a3;font-size:0.78rem;padding:6px 12px;">Establecer Base</button>
+              </div>
             </div>
-            <div>
-              <label class="input-label">Comunidad SNMP</label>
-              <input class="input-field" placeholder="public" value="${f.community}" onchange="actualizarFotocopiadora('${f.id}', 'community', this.value)">
-            </div>
-            <div>
-              <label class="input-label">OID Total</label>
-              <input class="input-field" placeholder="OID..." value="${f.oidTotal}" onchange="actualizarFotocopiadora('${f.id}', 'oidTotal', this.value)">
-            </div>
-            <div style="grid-column:span 2;">
-              <label class="input-label">OID B/N</label>
-              <input class="input-field" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
-            </div>
+
+            ${f.historial.length > 0 ? `
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+                <div style="font-size:0.8rem;color:#666;margin-bottom:6px;">Última lectura: ${f.historial[0]?.hora || "—"}</div>
+              </div>
+            ` : ''}
           </div>
+
+          <!-- Configuración avanzada (oculta por defecto) -->
+          <details style="margin-top:10px;">
+            <summary style="cursor:pointer;font-size:0.85rem;color:#666;">⚙️ Configuración avanzada</summary>
+            <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label class="input-label">IP</label>
+                <input class="input-field" placeholder="192.168.1.100" value="${f.ip}" onchange="actualizarFotocopiadora('${f.id}', 'ip', this.value)">
+              </div>
+              <div>
+                <label class="input-label">Puerto Proxy</label>
+                <input class="input-field" placeholder="3001" value="${f.port}" onchange="actualizarFotocopiadora('${f.id}', 'port', this.value)">
+              </div>
+              <div>
+                <label class="input-label">Comunidad SNMP</label>
+                <input class="input-field" placeholder="public" value="${f.community}" onchange="actualizarFotocopiadora('${f.id}', 'community', this.value)">
+              </div>
+              <div>
+                <label class="input-label">OID Total</label>
+                <input class="input-field" placeholder="OID..." value="${f.oidTotal}" onchange="actualizarFotocopiadora('${f.id}', 'oidTotal', this.value)">
+              </div>
+              <div style="grid-column:span 2;">
+                <label class="input-label">OID B/N</label>
+                <input class="input-field" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
+              </div>
+            </div>
+          </details>
         </div>
       `;
     }).join("");
   }
 
-  // Renderizar monitor del dispositivo seleccionado
+  // Renderizar monitor del dispositivo seleccionado (para compatibilidad con la vieja UI)
   renderFotocopiadoraMonitorUI();
 }
 
@@ -2775,6 +2823,100 @@ window.agregarFotocopiadora = function() {
   fotocopiadoraSeleccionadaId = nueva.id;
   renderFotocopiadorasUI();
   mostrarMensaje("✅ Fotocopiadora agregada", "ok");
+};
+
+// Funciones individuales para cada fotocopiadora
+window.probarConexionFotocopiadora = async function(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f) return;
+  mostrarMensaje("🔄 Probando conexión...", "warning");
+  try {
+    const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
+    const bw = await fotocopiadoraSnmpGet(f, f.oidBw);
+    f.lastTotal = parseInt(total);
+    f.lastBw = parseInt(bw);
+    guardarFotocopiadoras();
+    renderFotocopiadorasUI();
+    mostrarMensaje("✅ Conexión exitosa a " + f.nombre, "ok");
+  } catch (e) {
+    console.error("Error probando conexión:", e);
+    mostrarMensaje("❌ Error de conexión: " + (e.message || "Revisa IP/proxy"), "error");
+  }
+};
+
+window.iniciarMonitorFotocopiadora = function(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f || f.monitorInterval) return;
+  if (!f.ip) {
+    mostrarMensaje("⚠️ Configura la IP primero", "warning");
+    return;
+  }
+
+  const poll = async () => {
+    try {
+      const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
+      const bw = await fotocopiadoraSnmpGet(f, f.oidBw);
+      const totalInt = parseInt(total);
+      const bwInt = parseInt(bw);
+      
+      const now = new Date();
+      const hora = now.toLocaleTimeString();
+      const fecha = now.toLocaleDateString();
+
+      if (f.baseTotal === null) f.baseTotal = totalInt;
+      const delta = totalInt - (f.lastTotal !== null ? f.lastTotal : totalInt);
+      
+      f.lastTotal = totalInt;
+      f.lastBw = bwInt;
+
+      if (delta > 0) {
+        f.historial.unshift({
+          fecha,
+          hora,
+          total: totalInt,
+          delta,
+          bw: bwInt,
+          estado: "ok"
+        });
+        if (f.historial.length > 100) f.historial.pop();
+      }
+
+      guardarFotocopiadoras();
+      renderFotocopiadorasUI();
+    } catch (e) {
+      console.error("Error en monitor:", e);
+    }
+  };
+
+  // Primera lectura inmediata
+  poll();
+  // Luego cada 10 segundos
+  f.monitorInterval = setInterval(poll, 10000);
+  renderFotocopiadorasUI();
+  mostrarMensaje("✅ Monitor iniciado para " + f.nombre, "ok");
+};
+
+window.detenerMonitorFotocopiadora = function(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f || !f.monitorInterval) return;
+  clearInterval(f.monitorInterval);
+  f.monitorInterval = null;
+  renderFotocopiadorasUI();
+  mostrarMensaje("⏸️ Monitor detenido para " + f.nombre, "warning");
+};
+
+window.establecerBaseFotocopiadora = async function(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f) return;
+  try {
+    const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
+    f.baseTotal = parseInt(total);
+    guardarFotocopiadoras();
+    renderFotocopiadorasUI();
+    mostrarMensaje("✅ Base establecida para " + f.nombre, "ok");
+  } catch (e) {
+    mostrarMensaje("❌ Error estableciendo base", "error");
+  }
 };
 
 window.cambiarFotocopiadoraReporte = function(id) {
