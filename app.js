@@ -863,15 +863,16 @@ function renderizarTabla(prods) {
   const inv = document.getElementById("inventario");
   if (!inv) return;
   if (!prods.length) { 
-    inv.innerHTML=`<tr><td colspan="6" style="text-align:center;color:#aaa;padding:24px;font-family:'IBM Plex Mono',monospace;">Sin resultados</td></tr>`; 
+    inv.innerHTML=`<tr><td colspan="7" style="text-align:center;color:#aaa;padding:24px;font-family:'IBM Plex Mono',monospace;">Sin resultados</td></tr>`; 
     return; 
   }
-  inv.innerHTML = prods.map(p => {
+  inv.innerHTML = prods.map((p, i) => {
     const bc = p.stock<=0?"badge-empty":p.stock<=5?"badge-low":"badge-ok";
     const n  = p.nombre.replace(/'/g,"\\'");
     const pv = _precioVenta(p);
     const pc = _precioCompra(p);
     return `<tr>
+      <td class="mono" style="font-weight:900;color:#64748b;">${i + 1}</td>
       <td style="font-weight:600;">${p.nombre}</td>
       <td class="mono" style="font-size:0.76rem;color:#555;">${p.codigo}</td>
       <td><span class="badge-stock ${bc}">${p.stock}</span></td>
