@@ -288,7 +288,7 @@
         <button class="sidebar-btn"        id="sb-reporte"    onclick="cambiarTabSidebar('tab-reporte','sb-reporte','Deudas')">  Deudas</button>
         <button class="sidebar-btn"        id="sb-fiadas"     onclick="cambiarTabSidebar('tab-fiadas','sb-fiadas','Copias Fiadas')">  Copias Fiadas</button>
         <button class="sidebar-btn"        id="sb-impresiones" onclick="cambiarTabSidebar('tab-impresiones','sb-impresiones','Conteo de Impresiones')">  Conteo de Impresiones</button>
-        <button class="sidebar-btn"        id="sb-ricoh-rep"  onclick="cambiarTabSidebar('tab-ricoh-rep','sb-ricoh-rep','Ricoh MP5055')">  Ricoh MP5055</button>
+        <button class="sidebar-btn"        id="sb-ricoh-rep"  onclick="cambiarTabSidebar('tab-ricoh-rep','sb-ricoh-rep','Reportes Fotocopiadoras')">  Reportes Fotocopiadoras</button>
 
         <!-- FINANZAS -->
         <div class="sb-group-title">Finanzas</div>
@@ -297,7 +297,7 @@
 
         <!-- INSTALACIONES -->
         <div class="sb-group-title">Instalaciones</div>
-        <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config. Ricoh MP5055')">  Ricoh MP5055</button>
+        <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config Fotocopiadoras')">  Config Fotocopiadoras</button>
         <button class="sidebar-btn"        id="sb-usuarios"   onclick="cambiarTabSidebar('tab-usuarios','sb-usuarios','Usuarios')">  Usuarios</button>
         <button class="sidebar-btn"        id="sb-etiquetas"  onclick="cambiarTabSidebar('tab-etiquetas','sb-etiquetas','Etiquetas')">  Etiquetas</button>
         <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','PC Vendedor')">  PC Vendedor</button>
@@ -340,7 +340,7 @@
           <button class="dt-drop-item" id="dt-reporte"   onclick="selDt('tab-reporte','dt-reporte','Deudas','dtg-reportes')">Deudas</button>
           <button class="dt-drop-item" id="dt-fiadas"    onclick="selDt('tab-fiadas','dt-fiadas','Copias Fiadas','dtg-reportes')">Copias Fiadas</button>
           <button class="dt-drop-item" id="dt-impresiones" onclick="selDt('tab-impresiones','dt-impresiones','Conteo de Impresiones','dtg-reportes')">Conteo de Impresiones</button>
-          <button class="dt-drop-item" id="dt-ricoh-rep" onclick="selDt('tab-ricoh-rep','dt-ricoh-rep','Ricoh MP5055','dtg-reportes')">Ricoh MP5055</button>
+          <button class="dt-drop-item" id="dt-ricoh-rep" onclick="selDt('tab-ricoh-rep','dt-ricoh-rep','Reportes Fotocopiadoras','dtg-reportes')">Reportes Fotocopiadoras</button>
         </div>
       </div>
 
@@ -357,7 +357,7 @@
       <div class="dt-group" id="dtg-config">
         <button class="dt-group-btn" onclick="toggleDtGroup('dtg-config')">Instalaciones -</button>
         <div class="dt-dropdown">
-          <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Ricoh MP5055','dtg-config')">Ricoh MP5055</button>
+          <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Config Fotocopiadoras','dtg-config')">Config Fotocopiadoras</button>
           <button class="dt-drop-item" id="dt-usuarios"  onclick="selDt('tab-usuarios','dt-usuarios','Usuarios','dtg-config')">Usuarios</button>
           <button class="dt-drop-item" id="dt-etiquetas" onclick="selDt('tab-etiquetas','dt-etiquetas','Etiquetas','dtg-config')">Etiquetas</button>
           <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','PC Vendedor','dtg-config')">PC Vendedor</button>
@@ -953,7 +953,7 @@
         <div class="card">
           <div class="card-title">Configuración de conexión</div>
           <div style="margin-bottom:10px;">
-            <label class="input-label">IP de la Ricoh MP5055 (en red local)</label>
+            <label class="input-label">IP de la fotocopiadora (en red local)</label>
             <input id="ricoh-ip" class="input-field" placeholder="Ej: 192.168.1.100" value="">
           </div>
           <div style="margin-bottom:10px;">
