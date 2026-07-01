@@ -295,12 +295,12 @@
         <button class="sidebar-btn"        id="sb-ganancias"  onclick="cambiarTabSidebar('tab-ganancias','sb-ganancias','Análisis de ganancias')">  Análisis de ganancias</button>
         <button class="sidebar-btn"        id="sb-movimientos" onclick="cambiarTabSidebar('tab-movimientos','sb-movimientos','Ingresos y egresos')">  Ingresos y egresos</button>
 
-        <!-- INSTALACIONES -->
-        <div class="sb-group-title">Instalaciones</div>
+        <!-- CONFIGURACIONES -->
+        <div class="sb-group-title">Configuraciones</div>
         <button class="sidebar-btn"        id="sb-ricoh"      onclick="cambiarTabSidebar('tab-ricoh','sb-ricoh','Config Fotocopiadoras')">  Config Fotocopiadoras</button>
         <button class="sidebar-btn"        id="sb-usuarios"   onclick="cambiarTabSidebar('tab-usuarios','sb-usuarios','Usuarios')">  Usuarios</button>
         <button class="sidebar-btn"        id="sb-etiquetas"  onclick="cambiarTabSidebar('tab-etiquetas','sb-etiquetas','Etiquetas')">  Etiquetas</button>
-        <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','PC Vendedor')">  PC Vendedor</button>
+        <button class="sidebar-btn"        id="sb-impresiones-svc" onclick="cambiarTabSidebar('tab-impresiones-svc','sb-impresiones-svc','Instaladores')">  Instaladores</button>
 
       </div>
     </div>
@@ -355,12 +355,12 @@
 
       <!-- CONFIGURACIÓN -->
       <div class="dt-group" id="dtg-config">
-        <button class="dt-group-btn" onclick="toggleDtGroup('dtg-config')">Instalaciones -</button>
+        <button class="dt-group-btn" onclick="toggleDtGroup('dtg-config')">Configuraciones -</button>
         <div class="dt-dropdown">
           <button class="dt-drop-item" id="dt-ricoh"     onclick="selDt('tab-ricoh','dt-ricoh','Config Fotocopiadoras','dtg-config')">Config Fotocopiadoras</button>
           <button class="dt-drop-item" id="dt-usuarios"  onclick="selDt('tab-usuarios','dt-usuarios','Usuarios','dtg-config')">Usuarios</button>
           <button class="dt-drop-item" id="dt-etiquetas" onclick="selDt('tab-etiquetas','dt-etiquetas','Etiquetas','dtg-config')">Etiquetas</button>
-          <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','PC Vendedor','dtg-config')">PC Vendedor</button>
+          <button class="dt-drop-item" id="dt-impresiones-svc" onclick="selDt('tab-impresiones-svc','dt-impresiones-svc','Instaladores','dtg-config')">Instaladores</button>
         </div>
       </div>
 
@@ -778,7 +778,7 @@
         <div style="margin-top:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:10px;">
           <div style="font-weight:900;color:#0f172a;margin-bottom:6px;">Checklist (PC del Vendedor)</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#475569;line-height:1.45;">
-            1) Entra como Admin → PC Vendedor → presiona “INSTALAR PC VENDEDOR (1 clic)”.<br>
+            1) Entra como Admin → Instaladores → presiona “INSTALAR PC VENDEDOR (1 clic)”.<br>
             2) Ejecuta el archivo descargado como Administrador.<br>
             3) Abre el sistema por: <b>http://127.0.0.1:8787/</b><br>
             4) Verifica servicios locales:<br>
