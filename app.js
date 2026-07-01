@@ -3218,6 +3218,16 @@ window.ricohDescargarProxy = function() {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "proxy-fotocopiadora.js"; a.click();
 };
 
+window.descargarInstalador = function() {
+  // Descarga el instalador desde GitHub
+  const instaladorUrl = "https://raw.githubusercontent.com/Moisesohs1007/libreria-stock/main/InstalarLibreriaProxy.ps1";
+  const a = document.createElement("a");
+  a.href = instaladorUrl;
+  a.download = "InstalarLibreriaProxy.ps1";
+  a.click();
+  mostrarMensaje("✅ Descarga iniciada! Cuando termine, ejecútalo con PowerShell.", "ok");
+};
+
 // Funciones de compatibilidad (para mantener la vieja UI funcionando)
 window.ricohGuardarConfig = function() {
   const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
