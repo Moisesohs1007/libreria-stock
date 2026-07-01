@@ -311,25 +311,30 @@ h1,h2,h3,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Mon
 .dt-dropdown{
   display:none;
   position:absolute;
-  top:calc(100% + 10px);
+  top:calc(100% + 8px);
   left:0;
-  min-width:220px;
-  padding:6px;
-  border-radius:14px;
+  min-width:240px;
+  padding:8px;
+  border-radius:16px;
   border:1px solid var(--border);
-  background:rgba(255,255,255,.98);
+  background:rgba(255,255,255,0.98);
   box-shadow:var(--shadow-lg);
-  z-index:9999;
+  z-index:10000;
+  backdrop-filter:saturate(140%) blur(10px);
 }
 .dt-dropdown::before{
   content:"";
   position:absolute;
-  top:-10px;
+  top:-12px;
   left:0;
   right:0;
-  height:10px;
+  height:12px;
 }
-.dt-group:hover .dt-dropdown, .dt-group.open .dt-dropdown{display:block;}
+.dt-group:hover .dt-dropdown, .dt-group.open .dt-dropdown{
+  display:block;
+  z-index:10000;
+}
+
 .dt-drop-item{
   width:100%;
   text-align:left;
