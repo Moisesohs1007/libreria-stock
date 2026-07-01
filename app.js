@@ -2838,9 +2838,6 @@ function renderFotocopiadorasUI() {
   const nombreConfig = document.getElementById("ricoh-config-nombre");
   const nombreReporte = document.getElementById("ricoh-rep-nombre");
   const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
-  console.log("renderFotocopiadorasUI - fotocopiadoraSeleccionadaId:", fotocopiadoraSeleccionadaId);
-  console.log("renderFotocopiadorasUI - f:", f);
-  console.log("renderFotocopiadorasUI - nombreConfig:", nombreConfig);
   if (f) {
     if (nombreConfig) nombreConfig.textContent = f.nombre;
     if (nombreReporte) nombreReporte.textContent = f.nombre;
@@ -2998,7 +2995,7 @@ function renderFotocopiadoraMonitorUI() {
   if (document.getElementById("ricoh-estado")) document.getElementById("ricoh-estado").textContent = f.monitorInterval ? "activo" : "detenido";
 }
 
-function seleccionarFotocopiadora(id) {
+window.seleccionarFotocopiadora = function(id) {
   fotocopiadoraSeleccionadaId = id;
   renderFotocopiadorasUI();
 }
