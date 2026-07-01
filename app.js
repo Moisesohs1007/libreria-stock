@@ -154,29 +154,50 @@ async function _auditLog(action, col, docId, before, after) {
 // GESTIÓN DE SESIÓN
 // =============================================
 function guardarSesion(rol, nombre) {
-  sessionStorage.setItem("lpm_rol", rol);
-  sessionStorage.setItem("lpm_nombre", nombre || "");
-  sessionStorage.removeItem("lpm_user_id");
-  sessionStorage.removeItem("lpm_usuario");
+  localStorage.setItem("lpm_rol", rol);
+  localStorage.setItem("lpm_nombre", nombre || "");
+  localStorage.removeItem("lpm_user_id");
+  localStorage.removeItem("lpm_usuario");
 }
 function guardarSesionExt(rol, nombre, extra) {
   guardarSesion(rol, nombre);
-  if (extra && extra.user_id) sessionStorage.setItem("lpm_user_id", extra.user_id);
-  if (extra && extra.usuario) sessionStorage.setItem("lpm_usuario", extra.usuario);
+  if (extra && extra.user_id) localStorage.setItem("lpm_user_id", extra.user_id);
+  if (extra && extra.usuario) localStorage.setItem("lpm_usuario", extra.usuario);
 }
 function leerSesion() {
   return {
-    rol: sessionStorage.getItem("lpm_rol"),
-    nombre: sessionStorage.getItem("lpm_nombre"),
-    user_id: sessionStorage.getItem("lpm_user_id"),
-    usuario: sessionStorage.getItem("lpm_usuario"),
+    rol: localStorage.getItem("lpm_rol"),
+    nombre: localStorage.getItem("lpm_nombre"),
+    user_id: localStorage.getItem("lpm_user_id"),
+    usuario: localStorage.getItem("lpm_usuario"),
   };
 }
 function borrarSesion() {
-  sessionStorage.removeItem("lpm_rol");
-  sessionStorage.removeItem("lpm_nombre");
-  sessionStorage.removeItem("lpm_user_id");
-  sessionStorage.removeItem("lpm_usuario");
+  localStorage.removeItem("lpm_rol");
+  localStorage.removeItem("lpm_nombre");
+  localStorage.removeItem("lpm_user_id");
+  localStorage.removeItem("lpm_usuario");
+}
+
+async function autoLoginAdmin() {
+  try {
+    const sesion = leerSesion();
+    if (sesion.rol) return; // Ya está logueado
+
+    // Buscar el primer usuario Admin en Firestore
+    const q = query(collection(db, "usuarios"), where("rol", "in", ["admin", "Admin"]), limit(1));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      guardarSesionExt(data.rol, data.nombre, { user_id: doc.id, usuario: data.usuario || data.nombre });
+      mostrarMensaje("✅ Logueado automáticamente como Admin", "ok");
+      // Recargar la UI para reflejar el login
+      setTimeout(() => location.reload(), 300);
+    }
+  } catch (e) {
+    console.log("Auto-login no disponible:", e);
+  }
 }
 
 // =============================================
@@ -5471,6 +5492,9 @@ function _renderMovEerr(cur, prev) {
 }
 
 window._finRenderAll = function() {
+  // Auto-login como Admin si no hay sesión
+  autoLoginAdmin();
+
   try {
     const n = new Date();
     const mf = document.getElementById("mov-fecha");
