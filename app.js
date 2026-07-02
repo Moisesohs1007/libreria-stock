@@ -3038,6 +3038,8 @@ async function inicializarFotocopiadoras() {
               baseTotal: null,
               lastTotal: null,
               lastBw: null,
+              toner: {},
+              tonerActualizadoMs: 0,
               historial: [],
               oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
               oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
@@ -3215,6 +3217,172 @@ async function fotocopiadoraSnmpGet(fotocopiadora, oid) {
   return data.value;
 }
 
+async function fotocopiadoraSnmpWalk(fotocopiadora, oid) {
+  const { ip, port, community } = fotocopiadora;
+  if (!ip) throw new Error("IP no configurada");
+  const url = `http://localhost:${port}/snmp-walk?ip=${encodeURIComponent(ip)}&community=${encodeURIComponent(community)}&oid=${encodeURIComponent(oid)}`;
+  const resp = await fetch(url, { signal: _timeoutSignal(7000) });
+  const data = await resp.json();
+  return Array.isArray(data?.values) ? data.values : [];
+}
+
+const FOTO_TONER_DESC_OID = "1.3.6.1.2.1.43.11.1.1.6.1";
+const FOTO_TONER_UNIT_OID = "1.3.6.1.2.1.43.11.1.1.7.1";
+const FOTO_TONER_MAX_OID = "1.3.6.1.2.1.43.11.1.1.8.1";
+const FOTO_TONER_LEVEL_OID = "1.3.6.1.2.1.43.11.1.1.9.1";
+
+function _fotoSnmpIndex(baseOid, oid) {
+  const prefix = `${baseOid}.`;
+  if (!String(oid || "").startsWith(prefix)) return "";
+  return String(oid).slice(prefix.length);
+}
+
+function _fotoMapByIndex(rows, baseOid) {
+  const map = new Map();
+  (rows || []).forEach((row) => {
+    if (!row?.oid) return;
+    const idx = _fotoSnmpIndex(baseOid, row.oid);
+    if (!idx) return;
+    map.set(idx, row.value);
+  });
+  return map;
+}
+
+function _fotoTonerColorKey(desc = "") {
+  const text = String(desc || "").toLowerCase();
+  if (!text) return "";
+  const isSupply = /(toner|cartridge|cartucho)/i.test(text);
+  const isIgnored = /(waste|drum|developer|fuser|maintenance|transfer|collector|bottle|unidad|revelador)/i.test(text);
+  if (!isSupply || isIgnored) return "";
+  if (/(black|negro|\bk\b)/i.test(text)) return "black";
+  if (/(cyan|cian)/i.test(text)) return "cyan";
+  if (/(magenta)/i.test(text)) return "magenta";
+  if (/(yellow|amarillo)/i.test(text)) return "yellow";
+  return "toner";
+}
+
+function _fotoTonerLabel(key) {
+  const labels = {
+    black: "Negro",
+    cyan: "Cian",
+    magenta: "Magenta",
+    yellow: "Amarillo",
+    toner: "Toner"
+  };
+  return labels[key] || "Toner";
+}
+
+function _fotoTonerPct(level, max, unit) {
+  const levelNum = Number(level);
+  const maxNum = Number(max);
+  const unitNum = Number(unit);
+  if (levelNum < 0) return null;
+  if (unitNum === 19) return Math.max(0, Math.min(100, levelNum));
+  if (maxNum > 0) return Math.max(0, Math.min(100, Math.round((levelNum / maxNum) * 100)));
+  return null;
+}
+
+function _fotoTonerOrden(f) {
+  const items = Object.entries(f?.toner || {}).map(([key, value]) => ({ key, ...(value || {}) }));
+  const order = { black: 1, cyan: 2, magenta: 3, yellow: 4, toner: 5 };
+  return items.sort((a, b) => (order[a.key] || 99) - (order[b.key] || 99));
+}
+
+function _fotoTonerHtml(f) {
+  const items = _fotoTonerOrden(f);
+  if (!items.length) {
+    return '<div style="margin-top:10px;font-size:0.78rem;color:#64748b;">Toner: sin lectura disponible todavía.</div>';
+  }
+  return `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="font-size:0.78rem;color:#64748b;margin-bottom:6px;">Nivel de toner</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;">
+        ${items.map(item => {
+          const pct = item.pct;
+          const pctText = pct === null ? "—" : `${pct}%`;
+          const meterWidth = pct === null ? 10 : Math.max(10, Math.min(100, pct));
+          return `
+            <div style="border:1px solid var(--border);border-radius:10px;padding:8px;background:#fff;">
+              <div style="display:flex;justify-content:space-between;gap:8px;font-size:0.74rem;margin-bottom:6px;">
+                <span>${item.label || _fotoTonerLabel(item.key)}</span>
+                <strong>${pctText}</strong>
+              </div>
+              <div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
+                <div style="height:100%;width:${meterWidth}%;background:${item.color || "#111827"};"></div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function actualizarTonerFotocopiadora(f, force = false) {
+  if (!f?.ip) return {};
+  const now = Date.now();
+  if (!force && f.tonerActualizadoMs && (now - Number(f.tonerActualizadoMs || 0)) < 60_000) {
+    return f.toner || {};
+  }
+  try {
+    const [descRows, unitRows, maxRows, levelRows] = await Promise.all([
+      fotocopiadoraSnmpWalk(f, FOTO_TONER_DESC_OID),
+      fotocopiadoraSnmpWalk(f, FOTO_TONER_UNIT_OID),
+      fotocopiadoraSnmpWalk(f, FOTO_TONER_MAX_OID),
+      fotocopiadoraSnmpWalk(f, FOTO_TONER_LEVEL_OID)
+    ]);
+    const descMap = _fotoMapByIndex(descRows, FOTO_TONER_DESC_OID);
+    const unitMap = _fotoMapByIndex(unitRows, FOTO_TONER_UNIT_OID);
+    const maxMap = _fotoMapByIndex(maxRows, FOTO_TONER_MAX_OID);
+    const levelMap = _fotoMapByIndex(levelRows, FOTO_TONER_LEVEL_OID);
+    const toner = {};
+    const allDescriptions = Array.from(descMap.entries());
+    allDescriptions.forEach(([idx, desc]) => {
+      const key = _fotoTonerColorKey(desc);
+      if (!key) return;
+      const unit = unitMap.get(idx);
+      const max = maxMap.get(idx);
+      const level = levelMap.get(idx);
+      const pct = _fotoTonerPct(level, max, unit);
+      toner[key] = {
+        label: _fotoTonerLabel(key),
+        descripcion: String(desc || ""),
+        pct,
+        unit: Number(unit || 0),
+        level: Number(level || 0),
+        max: Number(max || 0),
+        color: {
+          black: "#111827",
+          cyan: "#06b6d4",
+          magenta: "#d946ef",
+          yellow: "#eab308",
+          toner: "#334155"
+        }[key] || "#334155"
+      };
+    });
+    const tonerKeys = Object.keys(toner);
+    if (!tonerKeys.length && allDescriptions.length === 1) {
+      const [idx, desc] = allDescriptions[0];
+      toner.black = {
+        label: "Negro",
+        descripcion: String(desc || ""),
+        pct: _fotoTonerPct(levelMap.get(idx), maxMap.get(idx), unitMap.get(idx)),
+        unit: Number(unitMap.get(idx) || 0),
+        level: Number(levelMap.get(idx) || 0),
+        max: Number(maxMap.get(idx) || 0),
+        color: "#111827"
+      };
+    }
+    f.toner = toner;
+    f.tonerActualizadoMs = now;
+    return toner;
+  } catch (e) {
+    console.warn("No se pudo leer toner por SNMP:", e);
+    if (force) throw e;
+    return f.toner || {};
+  }
+}
+
 function renderFotocopiadorasUI() {
   const selector = document.getElementById("fotocopiadora-selector");
   const selectorReporte = document.getElementById("fotocopiadora-selector-reporte");
@@ -3287,6 +3455,8 @@ function renderFotocopiadorasUI() {
               </div>
             </div>
 
+            ${_fotoTonerHtml(f)}
+
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
               <div style="font-size:0.85rem;font-family:'IBM Plex Mono',monospace;">Estado: ${estadoMonitor}</div>
               <div style="display:flex;gap:8px;align-items:center;">
@@ -3335,6 +3505,9 @@ function renderFotocopiadorasUI() {
               <div style="grid-column:span 2;">
                 <label class="input-label">OID B/N</label>
                 <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="oidBw" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
+              </div>
+              <div style="grid-column:span 2;font-size:0.74rem;color:#64748b;background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:8px 10px;">
+                El toner se detecta automaticamente con Printer-MIB por SNMP cuando el equipo lo soporte.
               </div>
             </div>
           </details>
@@ -3619,6 +3792,8 @@ window.agregarFotocopiadora = async function() {
     baseTotal: null,
     lastTotal: null,
     lastBw: null,
+    toner: {},
+    tonerActualizadoMs: 0,
     historial: [],
     oidTotal: preset.oidTotal,
     oidBw: preset.oidBw,
@@ -3652,6 +3827,7 @@ window.probarConexionFotocopiadora = async function(id) {
     const bw = await fotocopiadoraSnmpGet(f, f.oidBw);
     f.lastTotal = parseInt(total);
     f.lastBw = parseInt(bw);
+    await actualizarTonerFotocopiadora(f, true);
     await guardarUnaFotocopiadora(f);
     renderFotocopiadorasUI();
     mostrarMensaje("✅ Conexión exitosa a " + f.nombre, "ok");
@@ -3689,6 +3865,7 @@ window.iniciarMonitorFotocopiadora = async function(id) {
       
       f.lastTotal = totalInt;
       f.lastBw = bwInt;
+      await actualizarTonerFotocopiadora(f, false);
 
       if (delta > 0) {
         f.historial.unshift({
@@ -3775,6 +3952,8 @@ window.fotocopiadoraConectar = async function(optionalFotocopiadora) {
     const total = await fotocopiadoraSnmpGet(f, f.oidTotal);
     const bw    = await fotocopiadoraSnmpGet(f, f.oidBw);
     f.lastTotal = parseInt(total);
+    f.lastBw = parseInt(bw);
+    await actualizarTonerFotocopiadora(f, true);
     const dot = document.getElementById("ricoh-dot");
     if (dot) dot.style.background = "#4ade80";
     renderFotocopiadoraMonitorUI();
@@ -3855,7 +4034,7 @@ window.fotocopiadoraExportarHistorial = function() {
 };
 
 window.ricohDescargarProxy = function() {
-  const script = `const express = require('express'); const snmp = require('net-snmp'); const cors = require('cors'); const app = express(); app.use(cors()); app.get('/snmp', (req, res) => { const { ip, community = 'public', oid } = req.query; const session = snmp.createSession(ip, community); session.get([oid], (err, varbinds) => { session.close(); if (err) return res.status(500).json({ error: err.message }); res.json({ value: varbinds[0].value.toString() }); }); }); app.listen(3001, () => console.log('Proxy OK en 3001'));`;
+  const script = `const express = require('express'); const snmp = require('net-snmp'); const cors = require('cors'); const app = express(); app.use(cors()); function normalizeSnmpValue(value) { if (Buffer.isBuffer(value)) return value.toString("utf8").trim(); if (Array.isArray(value)) return value.map(normalizeSnmpValue).join(", "); if (value && typeof value === "object" && typeof value.toString === "function") return value.toString().trim(); return String(value ?? "").trim(); } function createSnmpSession(ip, community) { return snmp.createSession(ip, community, { version: snmp.Version2c, timeout: 5000, retries: 1 }); } app.get('/snmp', (req, res) => { const { ip, community = 'public', oid } = req.query; const session = createSnmpSession(ip, community); session.get([oid], (err, varbinds) => { session.close(); if (err) return res.status(500).json({ error: err.message }); res.json({ value: normalizeSnmpValue(varbinds[0]?.value) }); }); }); app.get('/snmp-walk', (req, res) => { const { ip, community = 'public', oid } = req.query; const session = createSnmpSession(ip, community); const values = []; session.subtree(oid, 20, (varbinds) => { for (const vb of varbinds || []) { if (snmp.isVarbindError(vb)) { values.push({ oid: vb.oid, error: snmp.varbindError(vb) }); continue; } values.push({ oid: vb.oid, value: normalizeSnmpValue(vb.value) }); } }, (err) => { session.close(); if (err) return res.status(500).json({ error: err.message }); res.json({ values }); }); }); app.listen(3001, () => console.log('Proxy OK en 3001'));`;
   const blob = new Blob([script], { type: "text/javascript" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "proxy-fotocopiadora.js"; a.click();
 };
