@@ -366,6 +366,44 @@ function _presenceFmt(ms) {
   }
 }
 
+function _presenceIdentityKey(row) {
+  return String(row?.user_id || row?.usuario || row?.nombre || row?.id || "anon");
+}
+
+function _presenceRank(row) {
+  const estado = _presenceEstadoFila(row);
+  if (estado.label === "Activo") return 3;
+  if (estado.label === "Inactivo") return 2;
+  return 1;
+}
+
+function _presenceRowsVisibles(rows) {
+  const map = new Map();
+  (rows || []).forEach((row) => {
+    const key = _presenceIdentityKey(row);
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, row);
+      return;
+    }
+    const nextRank = _presenceRank(row);
+    const currentRank = _presenceRank(current);
+    if (nextRank > currentRank) {
+      map.set(key, row);
+      return;
+    }
+    if (nextRank < currentRank) return;
+    const nextSignal = Number(row?.ultimaSenalMs || 0);
+    const currentSignal = Number(current?.ultimaSenalMs || 0);
+    if (nextSignal >= currentSignal) map.set(key, row);
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    const ad = Number(a?.ultimaSenalMs || 0);
+    const bd = Number(b?.ultimaSenalMs || 0);
+    return bd - ad;
+  });
+}
+
 function renderPresenciaUsuariosPanel() {
   const body = document.getElementById("presence-users-tbody");
   const meta = document.getElementById("presence-users-meta");
@@ -373,11 +411,7 @@ function renderPresenciaUsuariosPanel() {
   const sumIna = document.getElementById("presence-inactivos");
   const sumDes = document.getElementById("presence-desconectados");
   if (!body) return;
-  const rows = (presenciaPanelRows || []).slice().sort((a, b) => {
-    const ad = Number(a?.ultimaSenalMs || 0);
-    const bd = Number(b?.ultimaSenalMs || 0);
-    return bd - ad;
-  });
+  const rows = _presenceRowsVisibles(presenciaPanelRows || []);
   let activos = 0, inactivos = 0, desconectados = 0;
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;">Sin usuarios monitoreados</td></tr>';
@@ -408,7 +442,7 @@ function renderPresenciaUsuariosPanel() {
       </tr>
     `;
   }).join("");
-  if (meta) meta.textContent = `${rows.length} sesion(es) registradas en monitoreo.`;
+  if (meta) meta.textContent = `${rows.length} usuario(s) visibles en monitoreo.`;
   if (sumAct) sumAct.textContent = String(activos);
   if (sumIna) sumIna.textContent = String(inactivos);
   if (sumDes) sumDes.textContent = String(desconectados);
