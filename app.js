@@ -2607,6 +2607,7 @@ let fotocopiadoras = [];
 let fotocopiadoraSeleccionadaId = null;
 let fotocopiadorasUnsub = null; // Para cancelar la suscripción a Firestore
 let fotocopiadorasPendientes = new Map();
+let fotocopiadorasSeedInFlight = false;
 
 function serializarFotocopiadorasLocal() {
   return fotocopiadoras.map(f => {
@@ -2629,38 +2630,81 @@ function _valoresPendientesCoinciden(remoto, pendiente) {
   });
 }
 
+function cargarFotocopiadorasLocal() {
+  try {
+    const saved = localStorage.getItem("fotocopiadoras");
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+function _normalizarFotoTexto(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function _puntajeFotocopiadora(f) {
+  let score = 0;
+  if (String(f?.ip || "").trim()) score += 10;
+  if (Array.isArray(f?.historial)) score += Math.min(f.historial.length, 20);
+  if (typeof f?.lastTotal === "number" && !Number.isNaN(f.lastTotal)) score += 5;
+  if (!f?.defaultDevice) score += 2;
+  return score;
+}
+
+function deduplicarFotocopiadoras(lista) {
+  const grupos = new Map();
+  for (const f of Array.isArray(lista) ? lista : []) {
+    const key = `${_normalizarFotoTexto(f?.nombre)}|${_normalizarFotoTexto(f?.modelo)}`;
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key).push(f);
+  }
+  const salida = [];
+  for (const grupo of grupos.values()) {
+    if (grupo.length <= 1) {
+      salida.push(grupo[0]);
+      continue;
+    }
+    const ips = [...new Set(grupo.map(f => String(f?.ip || "").trim()).filter(Boolean))];
+    if (ips.length > 1) {
+      salida.push(...grupo);
+      continue;
+    }
+    const mejor = grupo.slice().sort((a, b) => _puntajeFotocopiadora(b) - _puntajeFotocopiadora(a))[0];
+    salida.push(mejor);
+  }
+  return salida;
+}
+
+async function restaurarFotocopiadorasDesdeLocal(cacheLocal) {
+  if (fotocopiadorasSeedInFlight) return;
+  const lista = deduplicarFotocopiadoras(cacheLocal);
+  if (!lista.length) return;
+  fotocopiadorasSeedInFlight = true;
+  try {
+    for (const fLocal of lista) {
+      const { id, monitorInterval, ...data } = fLocal;
+      await addDoc(collection(db, "fotocopiadoras"), data);
+    }
+  } finally {
+    fotocopiadorasSeedInFlight = false;
+  }
+}
+
 // Cargar config guardada desde Firestore (sincronizada en la nube)
 async function inicializarFotocopiadoras() {
   try {
-    // Primero, migrar fotocopiadoras existentes en localStorage a Firestore (solo una vez)
-    const migrationFlag = localStorage.getItem("fotocopiadoras_migracion_completada");
-    const savedLocal = localStorage.getItem("fotocopiadoras");
-    if (savedLocal && !migrationFlag) {
-      try {
-        const fotocopiadorasLocal = JSON.parse(savedLocal);
-        if (fotocopiadorasLocal.length > 0) {
-          console.log("Migrando fotocopiadoras desde localStorage a Firestore...");
-          for (const fLocal of fotocopiadorasLocal) {
-            const { id, monitorInterval, ...data } = fLocal;
-            await addDoc(collection(db, "fotocopiadoras"), data);
-          }
-          // Marcar migración como completada y limpiar localStorage
-          localStorage.setItem("fotocopiadoras_migracion_completada", "true");
-          localStorage.removeItem("fotocopiadoras");
-          console.log("Migración completada!");
-        }
-      } catch (eMigracion) {
-        console.error("Error migrando fotocopiadoras:", eMigracion);
-      }
-    } else if (savedLocal && migrationFlag) {
-      // Si la migración ya se completó pero todavía hay datos en localStorage, limpiarlos
-      localStorage.removeItem("fotocopiadoras");
+    const cacheLocal = deduplicarFotocopiadoras(cargarFotocopiadorasLocal());
+    if (cacheLocal.length > 0) {
+      fotocopiadoras = cacheLocal;
+      if (!fotocopiadoraSeleccionadaId) fotocopiadoraSeleccionadaId = cacheLocal[0].id || null;
+      renderFotocopiadorasUI();
     }
 
     // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
     fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), async (snap) => {
       const prevById = new Map(fotocopiadoras.map(f => [f.id, f]));
-      const nuevasFotocopiadoras = snap.docs.map(doc => ({
+      const nuevasFotocopiadoras = deduplicarFotocopiadoras(snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         monitorInterval: prevById.get(doc.id)?.monitorInterval || null // preserva el monitor activo
@@ -2672,31 +2716,35 @@ async function inicializarFotocopiadoras() {
           return f;
         }
         return { ...f, ...pendiente };
-      });
+      }));
 
       if (nuevasFotocopiadoras.length === 0) {
-        // Agregar una Ricoh MP5055 por defecto si no hay ninguna (solo una vez)
-        const defaultId = "ricoh_mp5055_default";
-        // Verificar si ya existe la flag de default
-        const defaultFlag = localStorage.getItem("fotocopiadora_default_creada");
-        if (!defaultFlag) {
-          const defaultFotocopiadora = {
-            nombre: "Ricoh MP5055",
-            modelo: "Ricoh MP5055",
-            ip: "",
-            port: "3001",
-            community: "public",
-            baseTotal: null,
-            lastTotal: null,
-            lastBw: null,
-            historial: [],
-            oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
-            oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
-            defaultDevice: true, // Marcar como dispositivo por defecto
-            autoStart: true // Auto-iniciar monitor al cargar la página
-          };
-          addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
-          localStorage.setItem("fotocopiadora_default_creada", "true");
+        if (cacheLocal.length > 0) {
+          await restaurarFotocopiadorasDesdeLocal(cacheLocal);
+          return;
+        }
+        if (!fotocopiadorasSeedInFlight) {
+          fotocopiadorasSeedInFlight = true;
+          try {
+            const defaultFotocopiadora = {
+              nombre: "Ricoh MP5055",
+              modelo: "Ricoh MP5055",
+              ip: "",
+              port: "3001",
+              community: "public",
+              baseTotal: null,
+              lastTotal: null,
+              lastBw: null,
+              historial: [],
+              oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
+              oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
+              defaultDevice: true,
+              autoStart: true
+            };
+            await addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
+          } finally {
+            fotocopiadorasSeedInFlight = false;
+          }
         }
         return;
       }
@@ -3211,12 +3259,22 @@ window.agregarFotocopiadora = async function() {
   if (!nombre) return;
 
   const modeloSeleccionado = prompt("Selecciona el modelo (o escribe el nombre para personalizar):\n- Ricoh MP 5055\n- Ricoh MP C3504ex");
+  const nombreLimpio = String(nombre || "").trim();
+  const modeloLimpio = String(modeloSeleccionado || "Personalizado").trim();
+  const yaExiste = fotocopiadoras.some(f =>
+    _normalizarFotoTexto(f?.nombre) === _normalizarFotoTexto(nombreLimpio) &&
+    _normalizarFotoTexto(f?.modelo) === _normalizarFotoTexto(modeloLimpio)
+  );
+  if (yaExiste) {
+    mostrarMensaje("⚠️ Ya existe una fotocopiadora con ese nombre y modelo", "warning");
+    return;
+  }
 
   const preset = PRESETS[modeloSeleccionado] || PRESETS["Ricoh MP 5055"];
 
   const nueva = {
-    nombre: nombre,
-    modelo: modeloSeleccionado || "Personalizado",
+    nombre: nombreLimpio,
+    modelo: modeloLimpio,
     ip: "",
     port: "3001",
     community: "public",
@@ -3233,6 +3291,10 @@ window.agregarFotocopiadora = async function() {
   try {
     const docRef = await addDoc(collection(db, "fotocopiadoras"), nueva);
     nueva.id = docRef.id;
+    fotocopiadoras.push({ ...nueva, monitorInterval: null });
+    fotocopiadoras = deduplicarFotocopiadoras(fotocopiadoras);
+    persistirFotocopiadorasLocal();
+    renderFotocopiadorasUI();
     mostrarMensaje("✅ Fotocopiadora agregada", "ok");
   } catch (e) {
     console.error("Error agregando fotocopiadora:", e);
