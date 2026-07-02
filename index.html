@@ -978,6 +978,35 @@
         <button onclick="agregarFotocopiadora()" class="btn btn-primary">➕ Agregar Fotocopiadora</button>
       </div>
 
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div class="card-title" style="margin:0;">Monitoreo de usuarios</div>
+          <div id="presence-users-meta" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#64748b;">Cargando presencia...</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 14px;">
+          <div class="stat-box"><div class="stat-num" id="presence-activos" style="color:#22c55e;">0</div><div class="stat-label">Activos</div></div>
+          <div class="stat-box"><div class="stat-num" id="presence-inactivos" style="color:#f59e0b;">0</div><div class="stat-label">Inactivos</div></div>
+          <div class="stat-box"><div class="stat-num" id="presence-desconectados" style="color:#ef4444;">0</div><div class="stat-label">Desconectados</div></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="fiadas-hist-table" style="margin:0;">
+            <thead>
+              <tr>
+                <th>USUARIO</th>
+                <th>ROL</th>
+                <th>ESTADO</th>
+                <th>INGRESO</th>
+                <th>ÚLTIMA ACTIVIDAD</th>
+                <th>EQUIPO</th>
+              </tr>
+            </thead>
+            <tbody id="presence-users-tbody">
+              <tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;">Sin usuarios monitoreados</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Lista de fotocopiadoras -->
       <div id="fotocopiadoras-lista" style="margin-bottom:20px;"></div>
 

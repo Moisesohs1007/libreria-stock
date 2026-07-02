@@ -42,8 +42,20 @@ let todosLosVendedores = [];
 let rolActual          = null; 
 let nombreVendedor     = "";
 let listenersIniciados = false;
+let presenciaHeartbeatTimer = null;
+let presenciaPanelUnsub = null;
+let presenciaPanelRows = [];
+let presenciaPanelTimer = null;
+let presenciaSessionId = "";
+let presenciaIngresoMs = 0;
+let presenciaUltActividadMs = 0;
+let presenciaUltActividadPushMs = 0;
+let presenciaListenersBound = false;
 const _ADMIN_TAB_KEY = "admin_last_tab_v1";
 const _VENDEDOR_TAB_KEY = "vendedor_last_tab_v1";
+const _PRESENCE_SESSION_KEY = "lpm_presence_session_id";
+const _PRESENCE_START_KEY = "lpm_presence_start_ms";
+const _PRESENCE_COLLECTION = "user_presence";
 
 function _saveAdminTab(payload) {
   try { localStorage.setItem(_ADMIN_TAB_KEY, JSON.stringify(payload || {})); } catch {}
@@ -177,6 +189,252 @@ function borrarSesion() {
   localStorage.removeItem("lpm_nombre");
   localStorage.removeItem("lpm_user_id");
   localStorage.removeItem("lpm_usuario");
+}
+
+function _presenceGetSessionId() {
+  if (presenciaSessionId) return presenciaSessionId;
+  try {
+    const saved = sessionStorage.getItem(_PRESENCE_SESSION_KEY);
+    if (saved) {
+      presenciaSessionId = saved;
+      return saved;
+    }
+  } catch {}
+  const created = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  presenciaSessionId = created;
+  try { sessionStorage.setItem(_PRESENCE_SESSION_KEY, created); } catch {}
+  return created;
+}
+
+function _presenceGetIngresoMs() {
+  if (presenciaIngresoMs) return presenciaIngresoMs;
+  try {
+    const saved = Number(sessionStorage.getItem(_PRESENCE_START_KEY) || "0");
+    if (saved > 0) {
+      presenciaIngresoMs = saved;
+      return saved;
+    }
+  } catch {}
+  presenciaIngresoMs = Date.now();
+  try { sessionStorage.setItem(_PRESENCE_START_KEY, String(presenciaIngresoMs)); } catch {}
+  return presenciaIngresoMs;
+}
+
+function _presenceSafeId(value) {
+  return String(value || "anon").replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function _presenceBrowser() {
+  const ua = String(navigator.userAgent || "");
+  if (/edg/i.test(ua)) return "Edge";
+  if (/opr|opera/i.test(ua)) return "Opera";
+  if (/chrome/i.test(ua)) return "Chrome";
+  if (/firefox/i.test(ua)) return "Firefox";
+  if (/safari/i.test(ua) && !/chrome/i.test(ua)) return "Safari";
+  return "Navegador";
+}
+
+function _presenceOS() {
+  const ua = String(navigator.userAgent || "");
+  if (/windows/i.test(ua)) return "Windows";
+  if (/android/i.test(ua)) return "Android";
+  if (/iphone|ipad|ios/i.test(ua)) return "iOS";
+  if (/mac/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "Sistema";
+}
+
+function _presenceEquipo() {
+  return `${_presenceBrowser()} / ${_presenceOS()}`;
+}
+
+function _presenceDocId() {
+  const s = leerSesion();
+  const base = s?.user_id || s?.usuario || s?.nombre || "anon";
+  return `${_presenceSafeId(base)}_${_presenceGetSessionId()}`;
+}
+
+async function _presenceWrite(extra = {}) {
+  const s = leerSesion();
+  if (!s?.rol) return;
+  const now = Date.now();
+  const activityMs = extra.activityMs || presenciaUltActividadMs || now;
+  const payload = {
+    sessionId: _presenceGetSessionId(),
+    user_id: s.user_id || "",
+    usuario: s.usuario || "",
+    nombre: s.nombre || "",
+    rol: s.rol || "",
+    equipo: _presenceEquipo(),
+    estadoManual: extra.estado || "conectado",
+    ingresoMs: _presenceGetIngresoMs(),
+    ultimaSenalMs: now,
+    ultimaActividadMs: activityMs,
+    ultimaActividadTexto: extra.activity || "Sesion activa",
+    actualizadoEn: serverTimestamp()
+  };
+  try {
+    await setDoc(doc(db, _PRESENCE_COLLECTION, _presenceDocId()), payload, { merge: true });
+  } catch {}
+}
+
+function registrarActividadUsuario(activity = "Interaccion en la app", force = false) {
+  if (!leerSesion()?.rol) return;
+  const now = Date.now();
+  presenciaUltActividadMs = now;
+  if (!force && (now - presenciaUltActividadPushMs) < 20_000) return;
+  presenciaUltActividadPushMs = now;
+  _presenceWrite({ activity, activityMs: now, estado: "conectado" });
+}
+
+function _presenceBindActivityListeners() {
+  if (presenciaListenersBound) return;
+  presenciaListenersBound = true;
+  document.addEventListener("click", () => registrarActividadUsuario("Interaccion en la app"), true);
+  document.addEventListener("keydown", (e) => {
+    if (e?.key === "Shift" || e?.key === "Control" || e?.key === "Alt") return;
+    registrarActividadUsuario("Uso del teclado");
+  }, true);
+  window.addEventListener("focus", () => registrarActividadUsuario("Volvio a la app", true));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) registrarActividadUsuario("Pestana visible", true);
+  });
+}
+
+function iniciarPresenciaUsuario(activity = "Ingreso al sistema") {
+  if (!leerSesion()?.rol) return;
+  _presenceBindActivityListeners();
+  _presenceGetSessionId();
+  _presenceGetIngresoMs();
+  presenciaUltActividadMs = Date.now();
+  presenciaUltActividadPushMs = 0;
+  _presenceWrite({ activity, activityMs: presenciaUltActividadMs, estado: "conectado" });
+  if (presenciaHeartbeatTimer) clearInterval(presenciaHeartbeatTimer);
+  presenciaHeartbeatTimer = setInterval(() => {
+    _presenceWrite({
+      activity: "Sesion abierta",
+      activityMs: presenciaUltActividadMs || Date.now(),
+      estado: "conectado"
+    });
+  }, 45_000);
+}
+
+async function detenerPresenciaUsuario(activity = "Cerro sesion", disconnected = true) {
+  try {
+    if (leerSesion()?.rol) {
+      await _presenceWrite({
+        activity,
+        activityMs: presenciaUltActividadMs || Date.now(),
+        estado: disconnected ? "desconectado" : "conectado"
+      });
+    }
+  } catch {}
+  if (presenciaHeartbeatTimer) clearInterval(presenciaHeartbeatTimer);
+  presenciaHeartbeatTimer = null;
+}
+
+function resetPresenciaLocal() {
+  presenciaSessionId = "";
+  presenciaIngresoMs = 0;
+  presenciaUltActividadMs = 0;
+  presenciaUltActividadPushMs = 0;
+  try { sessionStorage.removeItem(_PRESENCE_SESSION_KEY); } catch {}
+  try { sessionStorage.removeItem(_PRESENCE_START_KEY); } catch {}
+}
+
+function _presenceEstadoFila(row) {
+  const now = Date.now();
+  const senalMs = Number(row?.ultimaSenalMs || 0);
+  const actividadMs = Number(row?.ultimaActividadMs || 0);
+  if (String(row?.estadoManual || "") === "desconectado") return { label: "Desconectado", color: "#ef4444" };
+  if (!senalMs || (now - senalMs) > 5 * 60_000) return { label: "Desconectado", color: "#ef4444" };
+  if (!actividadMs || (now - actividadMs) > 60_000) return { label: "Inactivo", color: "#f59e0b" };
+  return { label: "Activo", color: "#22c55e" };
+}
+
+function _presenceFmt(ms) {
+  if (!ms) return "—";
+  try {
+    return new Date(Number(ms)).toLocaleString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch {
+    return "—";
+  }
+}
+
+function renderPresenciaUsuariosPanel() {
+  const body = document.getElementById("presence-users-tbody");
+  const meta = document.getElementById("presence-users-meta");
+  const sumAct = document.getElementById("presence-activos");
+  const sumIna = document.getElementById("presence-inactivos");
+  const sumDes = document.getElementById("presence-desconectados");
+  if (!body) return;
+  const rows = (presenciaPanelRows || []).slice().sort((a, b) => {
+    const ad = Number(a?.ultimaSenalMs || 0);
+    const bd = Number(b?.ultimaSenalMs || 0);
+    return bd - ad;
+  });
+  let activos = 0, inactivos = 0, desconectados = 0;
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;">Sin usuarios monitoreados</td></tr>';
+    if (meta) meta.textContent = "Sin sesiones activas registradas.";
+    if (sumAct) sumAct.textContent = "0";
+    if (sumIna) sumIna.textContent = "0";
+    if (sumDes) sumDes.textContent = "0";
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const estado = _presenceEstadoFila(r);
+    if (estado.label === "Activo") activos += 1;
+    else if (estado.label === "Inactivo") inactivos += 1;
+    else desconectados += 1;
+    const nombre = String(r?.nombre || r?.usuario || "Sin nombre");
+    const usuario = String(r?.usuario || "—");
+    const rol = String(r?.rol || "—");
+    const actividad = String(r?.ultimaActividadTexto || "Sin actividad");
+    const equipo = String(r?.equipo || "—");
+    return `
+      <tr>
+        <td>${nombre}<div style="font-size:0.68rem;color:#888;margin-top:2px;">${usuario}</div></td>
+        <td style="text-transform:capitalize;">${rol}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:700;color:${estado.color};"><span style="width:8px;height:8px;border-radius:999px;background:${estado.color};display:inline-block;"></span>${estado.label}</span></td>
+        <td>${_presenceFmt(r?.ingresoMs)}</td>
+        <td>${_presenceFmt(r?.ultimaActividadMs)}<div style="font-size:0.68rem;color:#888;margin-top:2px;">${actividad}</div></td>
+        <td>${equipo}</td>
+      </tr>
+    `;
+  }).join("");
+  if (meta) meta.textContent = `${rows.length} sesion(es) registradas en monitoreo.`;
+  if (sumAct) sumAct.textContent = String(activos);
+  if (sumIna) sumIna.textContent = String(inactivos);
+  if (sumDes) sumDes.textContent = String(desconectados);
+}
+
+function iniciarPanelPresenciaAdmin() {
+  if (presenciaPanelUnsub) return;
+  presenciaPanelUnsub = onSnapshot(collection(db, _PRESENCE_COLLECTION), (snap) => {
+    presenciaPanelRows = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+    renderPresenciaUsuariosPanel();
+  }, () => {
+    presenciaPanelRows = [];
+    renderPresenciaUsuariosPanel();
+  });
+  if (presenciaPanelTimer) clearInterval(presenciaPanelTimer);
+  presenciaPanelTimer = setInterval(() => {
+    renderPresenciaUsuariosPanel();
+  }, 30_000);
+}
+
+function detenerPanelPresenciaAdmin() {
+  if (presenciaPanelUnsub) presenciaPanelUnsub();
+  presenciaPanelUnsub = null;
+  if (presenciaPanelTimer) clearInterval(presenciaPanelTimer);
+  presenciaPanelTimer = null;
+  presenciaPanelRows = [];
 }
 
 async function autoLoginVendedor() {
@@ -484,6 +742,8 @@ function activarAdmin() {
   document.getElementById("login-screen").style.display  = "none";
   document.getElementById("vendedor-screen").style.display = "none";
   document.getElementById("admin-screen").style.display  = "block";
+  iniciarPresenciaUsuario("Ingreso a modo admin");
+  iniciarPanelPresenciaAdmin();
   iniciarListeners();
   try { _fiadaInitReportUi("a"); } catch {}
   try {
@@ -516,6 +776,8 @@ function activarVendedor(nombre) {
   document.getElementById("login-screen").style.display    = "none";
   document.getElementById("admin-screen").style.display    = "none";
   document.getElementById("vendedor-screen").style.display = "block";
+  iniciarPresenciaUsuario("Ingreso a modo vendedor");
+  detenerPanelPresenciaAdmin();
   const badge = document.getElementById("vendedor-nombre-badge");
   if (badge) badge.textContent = nombre.toUpperCase();
   if (scannerInput) scannerInput.focus();
@@ -543,7 +805,10 @@ function activarVendedor(nombre) {
   }, 120);
 }
 
-window.cerrarSesion = function() {
+window.cerrarSesion = async function() {
+  await detenerPresenciaUsuario("Cerro sesion", true);
+  detenerPanelPresenciaAdmin();
+  resetPresenciaLocal();
   borrarSesion();
   rolActual = null;
   try { bufferEscaner = ""; } catch {}
@@ -597,6 +862,7 @@ window.cambiarTabSidebar = function(tabId, btnId, titulo) {
   if (rolActual === "admin") {
     _saveAdminTab({ tabId, sbBtnId: btnId, titulo });
   }
+  registrarActividadUsuario(`Abrió ${titulo || tabId}`, true);
   cerrarSidebar();
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
@@ -643,6 +909,7 @@ window.selDt = function(tabId, btnId, titulo, groupId) {
   if (rolActual === "admin") {
     _saveAdminTab({ tabId, btnId, titulo, groupId });
   }
+  registrarActividadUsuario(`Abrió ${titulo || tabId}`, true);
   if (tabId === "tab-agregar") {
     const el = document.getElementById("codigo-barras");
     if (el) setTimeout(() => { try { el.focus(); } catch {} }, 100);
@@ -4532,6 +4799,7 @@ window.cambiarTabVendedor = function(tabId, btn) {
   if (panel) panel.classList.add("active");
   if (btn) btn.classList.add("active");
   _saveVendedorTab(tabId);
+  registrarActividadUsuario(`Abrió ${tabId}`, true);
 };
 
 window.vFiadaSeleccionar = function() { _fiadaSelect("v"); };
