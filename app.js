@@ -2606,6 +2606,28 @@ document.addEventListener("input", e => {
 let fotocopiadoras = [];
 let fotocopiadoraSeleccionadaId = null;
 let fotocopiadorasUnsub = null; // Para cancelar la suscripción a Firestore
+let fotocopiadorasPendientes = new Map();
+
+function serializarFotocopiadorasLocal() {
+  return fotocopiadoras.map(f => {
+    const { monitorInterval, ...rest } = f;
+    return rest;
+  });
+}
+
+function persistirFotocopiadorasLocal() {
+  try {
+    localStorage.setItem("fotocopiadoras", JSON.stringify(serializarFotocopiadorasLocal()));
+  } catch {}
+}
+
+function _valoresPendientesCoinciden(remoto, pendiente) {
+  return Object.entries(pendiente || {}).every(([campo, valor]) => {
+    const remotoVal = remoto?.[campo];
+    if (typeof valor === "string") return String(remotoVal ?? "").trim() === valor;
+    return remotoVal === valor;
+  });
+}
 
 // Cargar config guardada desde Firestore (sincronizada en la nube)
 async function inicializarFotocopiadoras() {
@@ -2637,11 +2659,20 @@ async function inicializarFotocopiadoras() {
 
     // Suscribirse a cambios en la colección "fotocopiadoras" de Firestore
     fotocopiadorasUnsub = onSnapshot(collection(db, "fotocopiadoras"), async (snap) => {
+      const prevById = new Map(fotocopiadoras.map(f => [f.id, f]));
       const nuevasFotocopiadoras = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        monitorInterval: null // No guardamos intervals en Firestore
-      }));
+        monitorInterval: prevById.get(doc.id)?.monitorInterval || null // preserva el monitor activo
+      })).map(f => {
+        const pendiente = fotocopiadorasPendientes.get(f.id);
+        if (!pendiente) return f;
+        if (_valoresPendientesCoinciden(f, pendiente)) {
+          fotocopiadorasPendientes.delete(f.id);
+          return f;
+        }
+        return { ...f, ...pendiente };
+      });
 
       if (nuevasFotocopiadoras.length === 0) {
         // Agregar una Ricoh MP5055 por defecto si no hay ninguna (solo una vez)
@@ -2671,6 +2702,7 @@ async function inicializarFotocopiadoras() {
       }
 
       fotocopiadoras = nuevasFotocopiadoras;
+      persistirFotocopiadorasLocal();
       if (!fotocopiadoraSeleccionadaId && fotocopiadoras.length > 0) {
         fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
       }
@@ -2719,10 +2751,7 @@ async function guardarFotocopiadoraEnFirestore(fotocopiadora) {
   } catch(e) {
     console.error("Error guardando fotocopiadora:", e);
     // Fallback a localStorage si hay error
-    localStorage.setItem("fotocopiadoras", JSON.stringify(fotocopiadoras.map(f => {
-      const { monitorInterval, ...rest } = f;
-      return rest;
-    })));
+    persistirFotocopiadorasLocal();
   }
 }
 
@@ -2900,7 +2929,7 @@ function renderFotocopiadorasUI() {
               <div style="display:flex;gap:8px;align-items:center;">
                 ${esAdmin ? `<div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;">
                   <label style="cursor:pointer;">
-                    <input type="checkbox" ${f.autoStart ? "checked" : ""} onchange="actualizarFotocopiadora('${f.id}', 'autoStart', this.checked)"> Auto-iniciar
+                    <input type="checkbox" data-fotocopiadora-id="${f.id}" data-field="autoStart" ${f.autoStart ? "checked" : ""} onchange="actualizarFotocopiadora('${f.id}', 'autoStart', this.checked)"> Auto-iniciar
                   </label>
                 </div>` : ''}
                 ${esAdmin ? (f.monitorInterval ? 
@@ -2926,23 +2955,23 @@ function renderFotocopiadorasUI() {
             <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <div>
                 <label class="input-label">IP</label>
-                <input class="input-field" placeholder="192.168.1.100" value="${f.ip}" onchange="actualizarFotocopiadora('${f.id}', 'ip', this.value)">
+                <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="ip" placeholder="192.168.1.100" value="${f.ip}" onchange="actualizarFotocopiadora('${f.id}', 'ip', this.value)">
               </div>
               <div>
                 <label class="input-label">Puerto Proxy</label>
-                <input class="input-field" placeholder="3001" value="${f.port}" onchange="actualizarFotocopiadora('${f.id}', 'port', this.value)">
+                <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="port" placeholder="3001" value="${f.port}" onchange="actualizarFotocopiadora('${f.id}', 'port', this.value)">
               </div>
               <div>
                 <label class="input-label">Comunidad SNMP</label>
-                <input class="input-field" placeholder="public" value="${f.community}" onchange="actualizarFotocopiadora('${f.id}', 'community', this.value)">
+                <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="community" placeholder="public" value="${f.community}" onchange="actualizarFotocopiadora('${f.id}', 'community', this.value)">
               </div>
               <div>
                 <label class="input-label">OID Total</label>
-                <input class="input-field" placeholder="OID..." value="${f.oidTotal}" onchange="actualizarFotocopiadora('${f.id}', 'oidTotal', this.value)">
+                <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="oidTotal" placeholder="OID..." value="${f.oidTotal}" onchange="actualizarFotocopiadora('${f.id}', 'oidTotal', this.value)">
               </div>
               <div style="grid-column:span 2;">
                 <label class="input-label">OID B/N</label>
-                <input class="input-field" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
+                <input class="input-field" data-fotocopiadora-id="${f.id}" data-field="oidBw" placeholder="OID..." value="${f.oidBw}" onchange="actualizarFotocopiadora('${f.id}', 'oidBw', this.value)">
               </div>
             </div>
           </details>
@@ -3127,13 +3156,41 @@ window.seleccionarFotocopiadora = function(id) {
   renderFotocopiadorasUI();
 }
 
-function actualizarFotocopiadora(id, campo, valor) {
+async function actualizarFotocopiadora(id, campo, valor) {
   const f = obtenerFotocopiadora(id);
   if (f) {
-    f[campo] = valor;
-    guardarUnaFotocopiadora(f);
+    const limpio = typeof valor === "string" ? valor.trim() : valor;
+    f[campo] = limpio;
+    const pendiente = fotocopiadorasPendientes.get(id) || {};
+    fotocopiadorasPendientes.set(id, { ...pendiente, [campo]: limpio });
+    persistirFotocopiadorasLocal();
     renderFotocopiadorasUI();
+    await guardarUnaFotocopiadora(f);
   }
+}
+
+async function sincronizarFotocopiadoraDesdeUI(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f) return null;
+  const inputs = document.querySelectorAll(`[data-fotocopiadora-id="${id}"]`);
+  let huboCambios = false;
+  const pendiente = fotocopiadorasPendientes.get(id) || {};
+  inputs.forEach(input => {
+    const campo = input.getAttribute("data-field");
+    if (!campo) return;
+    const valor = input.type === "checkbox" ? !!input.checked : String(input.value || "").trim();
+    pendiente[campo] = valor;
+    if (f[campo] !== valor) {
+      f[campo] = valor;
+      huboCambios = true;
+    }
+  });
+  if (inputs.length) fotocopiadorasPendientes.set(id, pendiente);
+  if (huboCambios) {
+    persistirFotocopiadorasLocal();
+    await guardarUnaFotocopiadora(f);
+  }
+  return f;
 }
 
 // Presets para fotocopiadoras comunes
@@ -3185,7 +3242,7 @@ window.agregarFotocopiadora = async function() {
 
 // Funciones individuales para cada fotocopiadora
 window.probarConexionFotocopiadora = async function(id) {
-  const f = obtenerFotocopiadora(id);
+  const f = await sincronizarFotocopiadoraDesdeUI(id) || obtenerFotocopiadora(id);
   if (!f) return;
   mostrarMensaje("🔄 Probando conexión...", "warning");
   try {
@@ -3202,8 +3259,8 @@ window.probarConexionFotocopiadora = async function(id) {
   }
 };
 
-window.iniciarMonitorFotocopiadora = function(id) {
-  const f = obtenerFotocopiadora(id);
+window.iniciarMonitorFotocopiadora = async function(id) {
+  const f = await sincronizarFotocopiadoraDesdeUI(id) || obtenerFotocopiadora(id);
   if (!f || f.monitorInterval) return;
   if (!f.ip) {
     mostrarMensaje("⚠️ Configura la IP primero", "warning");
