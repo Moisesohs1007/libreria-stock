@@ -2697,7 +2697,9 @@ async function inicializarFotocopiadoras() {
     const cacheLocal = deduplicarFotocopiadoras(cargarFotocopiadorasLocal());
     if (cacheLocal.length > 0) {
       fotocopiadoras = cacheLocal;
-      if (!fotocopiadoraSeleccionadaId) fotocopiadoraSeleccionadaId = cacheLocal[0].id || null;
+      if (!fotocopiadoraSeleccionadaId) {
+        fotocopiadoraSeleccionadaId = cacheLocal.find(f => esFotocopiadoraSeleccionada(f))?.id || cacheLocal[0].id || null;
+      }
       renderFotocopiadorasUI();
     }
 
@@ -2739,6 +2741,7 @@ async function inicializarFotocopiadoras() {
               oidTotal: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1",
               oidBw: "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.14",
               defaultDevice: true,
+              seleccionada: true,
               autoStart: true
             };
             await addDoc(collection(db, "fotocopiadoras"), defaultFotocopiadora);
@@ -2751,14 +2754,14 @@ async function inicializarFotocopiadoras() {
 
       fotocopiadoras = nuevasFotocopiadoras;
       persistirFotocopiadorasLocal();
-      if (!fotocopiadoraSeleccionadaId && fotocopiadoras.length > 0) {
-        fotocopiadoraSeleccionadaId = fotocopiadoras[0].id;
+      if ((!fotocopiadoraSeleccionadaId || !obtenerFotocopiadora(fotocopiadoraSeleccionadaId)) && fotocopiadoras.length > 0) {
+        fotocopiadoraSeleccionadaId = fotocopiadoras.find(f => esFotocopiadoraSeleccionada(f))?.id || fotocopiadoras[0].id;
       }
       renderFotocopiadorasUI();
       
       // Auto-iniciar monitores para fotocopiadoras con autoStart = true
       for (const f of fotocopiadoras) {
-        if (f.autoStart && f.ip && !f.monitorInterval) {
+        if (esFotocopiadoraSeleccionada(f) && f.autoStart && f.ip && !f.monitorInterval) {
           try {
             // Primero, obtener el contador actual para establecer la base
             const data = await window.fotocopiadoraConectar(f);
@@ -2891,6 +2894,17 @@ function obtenerFotocopiadora(id) {
   return fotocopiadoras.find(f => f.id === id);
 }
 
+function esFotocopiadoraSeleccionada(f) {
+  return f?.seleccionada !== false;
+}
+
+function obtenerFotocopiadoraActiva() {
+  return obtenerFotocopiadora(fotocopiadoraSeleccionadaId)
+    || fotocopiadoras.find(esFotocopiadoraSeleccionada)
+    || fotocopiadoras[0]
+    || null;
+}
+
 async function fotocopiadoraSnmpGet(fotocopiadora, oid) {
   const { ip, port, community } = fotocopiadora;
   if (!ip) throw new Error("IP no configurada");
@@ -2934,22 +2948,22 @@ function renderFotocopiadorasUI() {
     const esAdmin = s?.rol === "Admin" || s?.rol === "admin";
     
     lista.innerHTML = fotocopiadoras.map(f => {
-      const isSelected = f.id === fotocopiadoraSeleccionadaId;
+      const isSelected = esFotocopiadoraSeleccionada(f);
       const totalStr = f.lastTotal ? f.lastTotal.toLocaleString() : "—";
       const sesionStr = f.baseTotal ? (f.lastTotal - f.baseTotal).toLocaleString() : "0";
       const bwStr = f.lastBw ? f.lastBw.toLocaleString() : "—";
       const estadoMonitor = f.monitorInterval ? "🟢 Activo" : "🔴 Detenido";
 
       return `
-        <div class="card" style="margin-bottom:12px;border:${isSelected ? "3px solid #4ade80" : "2px solid var(--border)"};">
+        <div class="card" style="margin-bottom:12px;border:${isSelected ? "3px solid #4ade80" : "2px solid var(--border)"};opacity:${isSelected ? "1" : "0.78"};">
           <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
             <div>
               <div style="font-weight:bold;">${f.nombre}</div>
               <div style="font-size:0.8rem;color:#666;font-family:'IBM Plex Mono',monospace;">${f.modelo || "Personalizado"}</div>
             </div>
             <div style="display:flex;gap:8px;">
-              <button onclick="seleccionarFotocopiadora('${f.id}')" class="btn" style="background:${isSelected ? "#4ade80" : "#eee"};font-size:0.7rem;padding:6px 10px;">
-                ${isSelected ? "✅ Seleccionado" : "Seleccionar"}
+              <button onclick="toggleSeleccionFotocopiadora('${f.id}')" class="btn" style="background:${isSelected ? "#4ade80" : "#eee"};font-size:0.7rem;padding:6px 10px;">
+                ${isSelected ? "✅ Seleccionada" : "Seleccionar"}
               </button>
               ${esAdmin ? `<button onclick="eliminarFotocopiadora('${f.id}')" class="btn btn-danger" style="font-size:0.7rem;padding:6px 10px;">Eliminar</button>` : ''}
             </div>
@@ -3160,7 +3174,7 @@ async function renderTodosDispositivosUI() {
 }
 
 function renderFotocopiadoraMonitorUI() {
-  const f = obtenerFotocopiadora(fotocopiadoraSeleccionadaId);
+  const f = obtenerFotocopiadoraActiva();
   if (!f) return;
 
   // Configurar inputs de la vieja UI para compatibilidad
@@ -3202,6 +3216,29 @@ function renderFotocopiadoraMonitorUI() {
 window.seleccionarFotocopiadora = function(id) {
   fotocopiadoraSeleccionadaId = id;
   renderFotocopiadorasUI();
+}
+
+window.toggleSeleccionFotocopiadora = async function(id) {
+  const f = obtenerFotocopiadora(id);
+  if (!f) return;
+  const nuevaSeleccion = !esFotocopiadoraSeleccionada(f);
+  f.seleccionada = nuevaSeleccion;
+  if (!nuevaSeleccion && f.monitorInterval) {
+    clearInterval(f.monitorInterval);
+    f.monitorInterval = null;
+  }
+  if (nuevaSeleccion) {
+    fotocopiadoraSeleccionadaId = id;
+  } else if (fotocopiadoraSeleccionadaId === id) {
+    fotocopiadoraSeleccionadaId = fotocopiadoras.find(x => x.id !== id && esFotocopiadoraSeleccionada(x))?.id
+      || fotocopiadoras.find(x => x.id !== id)?.id
+      || null;
+  }
+  const pendiente = fotocopiadorasPendientes.get(id) || {};
+  fotocopiadorasPendientes.set(id, { ...pendiente, seleccionada: nuevaSeleccion });
+  persistirFotocopiadorasLocal();
+  renderFotocopiadorasUI();
+  await guardarUnaFotocopiadora(f);
 }
 
 async function actualizarFotocopiadora(id, campo, valor) {
@@ -3284,6 +3321,7 @@ window.agregarFotocopiadora = async function() {
     historial: [],
     oidTotal: preset.oidTotal,
     oidBw: preset.oidBw,
+    seleccionada: true,
     autoStart: true // Auto-iniciar monitor al cargar la página
   };
 
@@ -3291,6 +3329,7 @@ window.agregarFotocopiadora = async function() {
   try {
     const docRef = await addDoc(collection(db, "fotocopiadoras"), nueva);
     nueva.id = docRef.id;
+    fotocopiadoraSeleccionadaId = nueva.id;
     fotocopiadoras.push({ ...nueva, monitorInterval: null });
     fotocopiadoras = deduplicarFotocopiadoras(fotocopiadoras);
     persistirFotocopiadorasLocal();
@@ -3324,6 +3363,10 @@ window.probarConexionFotocopiadora = async function(id) {
 window.iniciarMonitorFotocopiadora = async function(id) {
   const f = await sincronizarFotocopiadoraDesdeUI(id) || obtenerFotocopiadora(id);
   if (!f || f.monitorInterval) return;
+  if (!esFotocopiadoraSeleccionada(f)) {
+    mostrarMensaje("⚠️ Selecciona esta fotocopiadora para monitorearla", "warning");
+    return;
+  }
   if (!f.ip) {
     mostrarMensaje("⚠️ Configura la IP primero", "warning");
     return;
